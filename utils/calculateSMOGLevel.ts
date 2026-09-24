@@ -1,7 +1,7 @@
 /**
 how to run this test:
-npm install
-npm test
+  npm install
+  npm test
 
 */
 
@@ -10,6 +10,9 @@ import { describe, expect, test } from '@jest/globals';
 
 // import the real production function so we are testing the actual app code
 import { calculateSMOGLevel } from './textAnalysis';
+
+
+// =================== Testing Production calculateSMOGLevel ===================
 
 describe('calculateSMOGLevel', () => {
   // normal case: 2 sentences and 9 polysyllabic words (words with 3+ syllables)

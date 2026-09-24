@@ -15,6 +15,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
+// =================== Implementing calculateSMOGLevel ===================
+
 public class CalculateSMOGLevel {
 
     private static final String VOWELS = "aeiouy";
@@ -94,6 +96,8 @@ public class CalculateSMOGLevel {
         int rounded = (int) Math.round(smog);
         return Math.max(6, Math.min(18, rounded));
     }
+
+    // =================== Testing calculateSMOGLevel ===================
 
     // normal case: 2 sentences and 9 polysyllabic words (words with 3+ syllables)
     // 3 + sqrt(9 * 30 / 2) = 14.62, which rounds to 15
