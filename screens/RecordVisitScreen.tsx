@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { View, StyleSheet, Pressable, TextInput, Alert, ScrollView, ActivityIndicator, Platform } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -17,22 +17,33 @@ import Animated, {
 } from "react-native-reanimated";
 import { extractVisitDetails } from "@/utils/gemini";
 import { transcribeAndSummarizeAudio } from "@/utils/gemini";
-import { Audio } from "expo-av";
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+} from "expo-audio";
 
 /*
- * NOTE: Using expo-av for audio recording despite its deprecation in SDK 54.
- * 
- * Rationale:
- * - expo-audio (the replacement) does not support pause/resume functionality as of SDK 54
- * - The recording pause/resume feature is critical for parents during doctor visits
- *   (they may need to pause during private conversations)
- * - expo-av provides pauseAsync()/startAsync() methods that meet requirements
- * 
- * Future migration:
- * - Monitor expo-audio for pause/resume support in future SDK releases
- * - Consider alternative solutions (e.g., segment stitching, different audio library)
- * - Migrate away from expo-av before it's fully removed from Expo
+ * Recording and playback use expo-audio (SDK 57), not expo-av.
+ *
+ * Expo Go on current iPhones only includes SDK 57 native modules. expo-av's
+ * ExponentAV module is gone from that client, so importing expo-av crashed the
+ * app on launch. We dropped expo-av and mapped the visit flow onto expo-audio:
+ *   - pause / resume a recording: pause() then record() on the same recorder
+ *   - stop and get the file: stop(), then recorder.uri
+ *   - review playback: AudioPlayer play() / pause()
+ *
+ * Recordings are stored in the app document directory so the system is less
+ * likely to delete them from cache.
  */
+
+const RECORDING_OPTIONS = {
+  ...RecordingPresets.HIGH_QUALITY,
+  directory: "document" as const,
+};
 
 export default function RecordVisitScreen() {
   const { theme } = useTheme();
@@ -53,48 +64,41 @@ export default function RecordVisitScreen() {
   const [isPaused, setIsPaused] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [doctorName, setDoctorName] = useState("");
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
   
   const [reviewMode, setReviewMode] = useState(false);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
+  const [playbackReady, setPlaybackReady] = useState(false);
   
   const [processingMode, setProcessingMode] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<"transcribing" | "summarizing" | "complete">("transcribing");
   const [transcriptionResult, setTranscriptionResult] = useState<string | null>(null);
   const [summaryResult, setSummaryResult] = useState<string | null>(null);
   
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const audioRecorder = useAudioRecorder(RECORDING_OPTIONS);
+  const playbackPlayer = useAudioPlayer(null, { updateInterval: 250 });
+  const playbackStatus = useAudioPlayerStatus(playbackPlayer);
   const pulse = useSharedValue(1);
 
   useEffect(() => {
-    recordingRef.current = recording;
-  }, [recording]);
-
-  useEffect(() => {
-    soundRef.current = sound;
-  }, [sound]);
-
-  useEffect(() => {
     requestPermissions();
-    return () => {
-      if (recordingRef.current) {
-        recordingRef.current.stopAndUnloadAsync().catch(console.error);
-      }
-      if (soundRef.current) {
-        soundRef.current.unloadAsync().catch(console.error);
-      }
-    };
   }, []);
+
+  useEffect(() => {
+    setIsPlaying(!!playbackStatus.playing);
+    setPlaybackPosition((playbackStatus.currentTime || 0) * 1000);
+    setPlaybackDuration((playbackStatus.duration || 0) * 1000);
+    if (playbackStatus.didJustFinish) {
+      setIsPlaying(false);
+    }
+  }, [playbackStatus]);
 
   const requestPermissions = async () => {
     try {
-      const { granted } = await Audio.requestPermissionsAsync();
+      const { granted } = await AudioModule.requestRecordingPermissionsAsync();
       setPermissionGranted(granted);
       if (!granted) {
         Alert.alert(
@@ -103,13 +107,23 @@ export default function RecordVisitScreen() {
           [{ text: "OK" }]
         );
       } else {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
         });
       }
     } catch (error) {
       console.error("Permission error:", error);
+    }
+  };
+
+  const discardRecording = async () => {
+    try {
+      if (audioRecorder.isRecording) {
+        await audioRecorder.stop();
+      }
+    } catch (error) {
+      console.error("Error stopping recording:", error);
     }
   };
 
@@ -154,14 +168,7 @@ export default function RecordVisitScreen() {
 
       if (Platform.OS === 'web') {
         if (shouldCancel) {
-          if (recording) {
-            try {
-              await recording.stopAndUnloadAsync();
-            } catch (error) {
-              console.error("Error stopping recording:", error);
-            }
-            setRecording(null);
-          }
+          await discardRecording();
           setIsRecording(false);
           setIsPaused(false);
           setSeconds(0);
@@ -177,14 +184,7 @@ export default function RecordVisitScreen() {
               text: "Cancel",
               style: "destructive",
               onPress: async () => {
-                if (recording) {
-                  try {
-                    await recording.stopAndUnloadAsync();
-                  } catch (error) {
-                    console.error("Error stopping recording:", error);
-                  }
-                  setRecording(null);
-                }
+                await discardRecording();
                 setIsRecording(false);
                 setIsPaused(false);
                 setSeconds(0);
@@ -211,15 +211,13 @@ export default function RecordVisitScreen() {
     }
     
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
-      
-      const { recording: newRecording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(newRecording);
+
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
       setIsRecording(true);
       setIsPaused(false);
     } catch (error) {
@@ -229,14 +227,14 @@ export default function RecordVisitScreen() {
   };
 
   const handlePause = async () => {
-    if (!recording) return;
+    if (!isRecording) return;
     
     try {
       if (isPaused) {
-        await recording.startAsync();
+        audioRecorder.record();
         setIsPaused(false);
       } else {
-        await recording.pauseAsync();
+        audioRecorder.pause();
         setIsPaused(true);
       }
     } catch (error) {
@@ -246,22 +244,20 @@ export default function RecordVisitScreen() {
   };
 
   const handleStop = async () => {
-    if (!recording) return;
+    if (!isRecording) return;
     
     try {
-      await recording.stopAndUnloadAsync();
-      const audioUri = recording.getURI();
+      await audioRecorder.stop();
+      const audioUri = audioRecorder.uri;
       
       if (!audioUri) {
         Alert.alert("Recording Error", "No audio was recorded.");
-        setRecording(null);
         setIsRecording(false);
         setIsPaused(false);
         return;
       }
 
       setRecordedUri(audioUri);
-      setRecording(null);
       setIsRecording(false);
       setIsPaused(false);
       setReviewMode(true);
@@ -270,7 +266,6 @@ export default function RecordVisitScreen() {
     } catch (error) {
       console.error("Failed to stop recording:", error);
       Alert.alert("Recording Error", "Could not save the recording. Please try again.");
-      setRecording(null);
       setIsRecording(false);
       setIsPaused(false);
     }
@@ -278,70 +273,51 @@ export default function RecordVisitScreen() {
 
   const loadAudioForPlayback = async (uri: string) => {
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
       });
-      
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri },
-        { shouldPlay: false },
-        onPlaybackStatusUpdate
-      );
-      setSound(newSound);
+      playbackPlayer.replace({ uri });
+      setPlaybackReady(true);
     } catch (error) {
       console.error("Failed to load audio for playback:", error);
       Alert.alert("Playback Error", "Could not load the recording for playback.");
     }
   };
 
-  const onPlaybackStatusUpdate = (status: any) => {
-    if (status.isLoaded) {
-      setPlaybackPosition(status.positionMillis);
-      setPlaybackDuration(status.durationMillis || 0);
-      setIsPlaying(status.isPlaying);
-      
-      if (status.didJustFinish) {
-        setIsPlaying(false);
-      }
-    }
-  };
-
   const handlePlayPause = async () => {
-    if (!sound) return;
+    if (!playbackReady) return;
     
     try {
-      const status = await sound.getStatusAsync();
-      if (!status.isLoaded) {
+      if (!playbackStatus.isLoaded) {
         Alert.alert("Playback Error", "Recording is no longer available.");
-        setSound(null);
+        setPlaybackReady(false);
         return;
       }
 
-      if (isPlaying) {
-        await sound.pauseAsync();
+      if (playbackStatus.playing) {
+        playbackPlayer.pause();
       } else {
-        await sound.playAsync();
+        playbackPlayer.play();
       }
     } catch (error) {
       console.error("Failed to play/pause audio:", error);
-      setSound(null);
+      setPlaybackReady(false);
     }
   };
 
   const handleReRecord = async () => {
-    if (sound) {
-      try {
-        await sound.unloadAsync();
-      } catch (error) {
-        console.error("Error unloading sound:", error);
-      }
-      setSound(null);
+    try {
+      playbackPlayer.pause();
+      await playbackPlayer.seekTo(0);
+    } catch (error) {
+      console.error("Error resetting playback:", error);
     }
+    setPlaybackReady(false);
     
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
     });
     
     setReviewMode(false);
@@ -357,9 +333,9 @@ export default function RecordVisitScreen() {
     if (!recordedUri) return;
     
     try {
-      if (sound) {
-        await sound.unloadAsync();
-        setSound(null);
+      if (playbackReady) {
+        playbackPlayer.pause();
+        setPlaybackReady(false);
       }
 
       setProcessingMode(true);
@@ -412,7 +388,6 @@ export default function RecordVisitScreen() {
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        console.error("Failed to process audio:", errorMessage);
         updateVisit(visitId, {
           isProcessing: false,
         });

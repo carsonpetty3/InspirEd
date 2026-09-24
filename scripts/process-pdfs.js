@@ -43,7 +43,7 @@ async function extractTextFromPDF(pdfPath) {
   const pdfData = fs.readFileSync(pdfPath);
   const base64PDF = pdfData.toString('base64');
   
-  const response = await callGeminiAPI('models/gemini-2.5-flash:generateContent', {
+  const response = await callGeminiAPI('models/gemini-3.6-flash:generateContent', {
     contents: [{
       parts: [
         {

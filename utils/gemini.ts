@@ -18,6 +18,8 @@ const getApiKey = (): string => {
   return apiKey;
 };
 
+const GEMINI_MODEL = "gemini-3.6-flash";
+
 let ai: GoogleGenAI | null = null;
 
 const getAI = (): GoogleGenAI => {
@@ -26,6 +28,43 @@ const getAI = (): GoogleGenAI => {
   }
   return ai;
 };
+
+function isRetryableGeminiError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("503") ||
+    lower.includes("unavailable") ||
+    lower.includes("high demand") ||
+    lower.includes("overloaded")
+  );
+}
+
+async function generateGeminiContent(contents: unknown) {
+  const maxAttempts = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await getAI().models.generateContent({
+        model: GEMINI_MODEL,
+        contents,
+      });
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableGeminiError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+      const delay = 1500 * attempt;
+      console.log(
+        `[Gemini] Service busy, retrying in ${delay}ms (attempt ${attempt}/${maxAttempts})`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
 
 export interface TranscriptionResult {
   transcription: string;
@@ -59,10 +98,7 @@ export async function transcribeAndSummarizeAudio(
 Do not add any commentary or additional text - just the transcription.`,
     ];
 
-    const transcriptionResponse = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: transcriptionContents,
-    });
+    const transcriptionResponse = await generateGeminiContent(transcriptionContents);
 
     const transcription = transcriptionResponse.text || "";
 
@@ -93,10 +129,7 @@ TRANSCRIPTION:
 ${transcription}`,
     ];
 
-    const summaryResponse = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: summaryContents,
-    });
+    const summaryResponse = await generateGeminiContent(summaryContents);
 
     const summary = summaryResponse.text || "";
 
@@ -106,14 +139,8 @@ ${transcription}`,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error("Gemini API error:", errorMessage);
-    if (errorStack) {
-      console.error("Error stack:", errorStack);
-    }
-    
-    // Parse and provide user-friendly error messages
     const friendlyError = parseGeminiError(errorMessage);
+    console.error(friendlyError);
     throw new Error(friendlyError);
   }
 }
@@ -183,10 +210,7 @@ Guidelines:
 
 If a category has no relevant information, return an empty array for that field.`;
 
-    const response = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-    });
+    const response = await generateGeminiContent(prompt);
 
     const text = response.text || "{}";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -236,10 +260,7 @@ Focus on:
 - Clarifying care instructions
 - Planning for the future`;
 
-    const response = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-    });
+    const response = await generateGeminiContent(prompt);
 
     const text = response.text || "[]";
     const jsonMatch = text.match(/\[[\s\S]*\]/);
@@ -329,10 +350,7 @@ ${question}
 
 Please provide a helpful, accurate response:`;
 
-    const response = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [prompt],
-    });
+    const response = await generateGeminiContent([prompt]);
 
     const answer = response.text || "";
     
@@ -361,34 +379,9 @@ export interface GeneratedLesson {
   practicalTips: string[];
 }
 
-async function callGeminiWithRetry(
-  prompt: string,
-  maxRetries: number = 3
-): Promise<string> {
-  let lastError: Error | null = null;
-  
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const response = await getAI().models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [prompt],
-      });
-      return response.text || "";
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      const errorStr = String(error);
-      
-      if (errorStr.includes("503") || errorStr.includes("overloaded") || errorStr.includes("UNAVAILABLE")) {
-        const delay = Math.pow(2, attempt) * 1000;
-        console.log(`[Gemini] API overloaded, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-      throw error;
-    }
-  }
-  
-  throw lastError || new Error("Failed after retries");
+async function callGeminiWithRetry(prompt: string): Promise<string> {
+  const response = await generateGeminiContent([prompt]);
+  return response.text || "";
 }
 
 export async function generateModuleLesson(
@@ -546,10 +539,7 @@ ${question}
 
 Please provide a helpful, educational response with inline citations where appropriate:`;
 
-    const response = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [prompt],
-    });
+    const response = await generateGeminiContent([prompt]);
 
     const answer = response.text || "";
     

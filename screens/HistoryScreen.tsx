@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { View, StyleSheet, Pressable, Image, FlatList, Alert, Platform } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -14,7 +14,11 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from "react-native-reanimated";
-import { Audio } from "expo-av";
+import {
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+} from "expo-audio";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -111,26 +115,33 @@ function VisitCard({
 }) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const player = useAudioPlayer(null, { updateInterval: 250 });
+  const playbackStatus = useAudioPlayerStatus(player);
+  const [soundLoaded, setSoundLoaded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
-  const soundRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync().catch(console.error);
+    if (!isActive) {
+      try {
+        player.pause();
+      } catch {
+        // Player may already be released when the card unmounts.
       }
-    };
-  }, []);
+    }
+  }, [isActive, player]);
 
   useEffect(() => {
-    if (!isActive && sound) {
-      sound.pauseAsync().catch(console.error);
+    setIsPlaying(!!playbackStatus.playing);
+    setPlaybackPosition((playbackStatus.currentTime || 0) * 1000);
+    setPlaybackDuration((playbackStatus.duration || 0) * 1000);
+    if (playbackStatus.didJustFinish) {
+      setIsPlaying(false);
+      setPlaybackPosition(0);
     }
-  }, [isActive, sound]);
+  }, [playbackStatus]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -148,51 +159,31 @@ function VisitCard({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const loadSound = async (): Promise<Audio.Sound | null> => {
-    if (sound) return sound;
+  const loadSound = async (): Promise<boolean> => {
+    if (soundLoaded) return true;
 
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
       });
-
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: visit.audioUri },
-        { shouldPlay: false },
-        onPlaybackStatusUpdate
-      );
-
-      setSound(newSound);
-      soundRef.current = newSound;
-      return newSound;
+      player.replace({ uri: visit.audioUri });
+      setSoundLoaded(true);
+      return true;
     } catch (error) {
       console.error("Error loading sound:", error);
-      return null;
-    }
-  };
-
-  const onPlaybackStatusUpdate = (status: any) => {
-    if (status.isLoaded) {
-      setPlaybackPosition(status.positionMillis);
-      setPlaybackDuration(status.durationMillis || 0);
-      setIsPlaying(status.isPlaying);
-
-      if (status.didJustFinish) {
-        setIsPlaying(false);
-        setPlaybackPosition(0);
-      }
+      return false;
     }
   };
 
   const togglePlayback = async () => {
-    if (!sound) {
-      const loadedSound = await loadSound();
-      if (!loadedSound || !isExpanded) return;
+    if (!soundLoaded) {
+      const loaded = await loadSound();
+      if (!loaded || !isExpanded) return;
       
       onPlaybackStart();
       try {
-        await loadedSound.playAsync();
+        player.play();
       } catch (error) {
         console.error("Playback error after load:", error);
       }
@@ -200,11 +191,11 @@ function VisitCard({
     }
 
     try {
-      if (isPlaying) {
-        await sound.pauseAsync();
+      if (playbackStatus.playing) {
+        player.pause();
       } else {
         onPlaybackStart();
-        await sound.playAsync();
+        player.play();
       }
     } catch (error) {
       console.error("Playback error:", error);
@@ -215,10 +206,10 @@ function VisitCard({
     const willExpand = !isExpanded;
     setIsExpanded(willExpand);
     
-    if (willExpand && !sound) {
+    if (willExpand && !soundLoaded) {
       await loadSound();
-    } else if (!willExpand && sound) {
-      await sound.pauseAsync();
+    } else if (!willExpand) {
+      player.pause();
     }
   };
 

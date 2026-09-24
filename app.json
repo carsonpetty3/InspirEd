@@ -29,6 +29,13 @@
     },
     "plugins": [
       [
+        "expo-audio",
+        {
+          "microphonePermission": "InspirEd needs microphone access to record doctor visits."
+        }
+      ],
+      "expo-video",
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",

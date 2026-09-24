@@ -10,7 +10,8 @@ import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EducationalVideo, getVideoStreamUrl } from "@/utils/googleDrive";
 import { getLocalVideoSource } from "@/utils/videoAssets";
-import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
+import { useEventListener } from "expo";
+import { useVideoPlayer, VideoView } from "expo-video";
 
 type VideoPlayerParams = {
   VideoPlayer: {
@@ -45,7 +46,10 @@ export default function VideoPlayerScreen() {
     createdAt: new Date().toISOString(),
   };
   const embeddedSourceType = params.sourceType;
-  const videoRef = useRef<Video>(null);
+  const player = useVideoPlayer(null, (p) => {
+    p.loop = false;
+    p.timeUpdateEventInterval = 0.25;
+  });
 
   const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -113,6 +117,17 @@ export default function VideoPlayerScreen() {
     loadVideoSource();
   }, [video.id, video.videoUrl, isEmbeddedVideo, embeddedSourceType]);
 
+  useEffect(() => {
+    if (!videoSource) return;
+    const source =
+      typeof videoSource === "number" ? videoSource : { uri: videoSource.uri };
+    player.replaceAsync(source).catch((err) => {
+      console.error("Video load error:", err);
+      setError("Unable to load video. Please try again later.");
+      setIsLoading(false);
+    });
+  }, [player, videoSource]);
+
   const saveProgress = useCallback(
     (currentPosition: number, totalDuration: number) => {
       if (totalDuration <= 0) return;
@@ -132,46 +147,51 @@ export default function VideoPlayerScreen() {
     [video.id, addVideoWatchRecord]
   );
 
-  const handlePlaybackStatusUpdate = useCallback(
-    (status: AVPlaybackStatus) => {
-      if (!status.isLoaded) {
-        if (status.error) {
-          setError("Unable to play this video. Please try again later.");
-          console.error("Video error:", status.error);
-        }
-        return;
-      }
+  useEventListener(player, "timeUpdate", ({ currentTime }) => {
+    const positionMs = (currentTime || 0) * 1000;
+    const durationMs = (player.duration || 0) * 1000;
+    setPosition(positionMs);
+    setDuration(durationMs);
+    if (positionMs && durationMs) {
+      saveProgress(positionMs, durationMs);
+    }
+  });
 
+  useEventListener(player, "playingChange", ({ isPlaying: playing }) => {
+    setIsPlaying(playing);
+    if (playing) {
       setIsLoading(false);
-      setIsPlaying(status.isPlaying);
-      setPosition(status.positionMillis || 0);
-      setDuration(status.durationMillis || 0);
+    }
+  });
 
-      if (status.positionMillis && status.durationMillis) {
-        saveProgress(status.positionMillis, status.durationMillis);
-      }
+  useEventListener(player, "playToEnd", () => {
+    const record: VideoWatchRecord = {
+      videoId: video.id,
+      watchedAt: new Date(),
+      completedPercent: 100,
+    };
+    addVideoWatchRecord(record);
+    setShowControls(true);
+    setIsPlaying(false);
+  });
 
-      if (status.didJustFinish) {
-        const record: VideoWatchRecord = {
-          videoId: video.id,
-          watchedAt: new Date(),
-          completedPercent: 100,
-        };
-        addVideoWatchRecord(record);
-        setShowControls(true);
-      }
-    },
-    [video.id, addVideoWatchRecord, saveProgress]
-  );
+  useEventListener(player, "statusChange", ({ status, error: statusError }) => {
+    if (status === "readyToPlay") {
+      setIsLoading(false);
+      setDuration((player.duration || 0) * 1000);
+    }
+    if (status === "error") {
+      setError("Unable to play this video. Please try again later.");
+      console.error("Video error:", statusError);
+    }
+  });
 
-  const togglePlayPause = async () => {
-    if (!videoRef.current) return;
-
+  const togglePlayPause = () => {
     try {
       if (isPlaying) {
-        await videoRef.current.pauseAsync();
+        player.pause();
       } else {
-        await videoRef.current.playAsync();
+        player.play();
         hideControlsAfterDelay();
       }
     } catch (err) {
@@ -179,10 +199,9 @@ export default function VideoPlayerScreen() {
     }
   };
 
-  const seekTo = async (positionMs: number) => {
-    if (!videoRef.current) return;
+  const seekTo = (positionMs: number) => {
     try {
-      await videoRef.current.setPositionAsync(positionMs);
+      player.currentTime = positionMs / 1000;
     } catch (err) {
       console.error("Seek error:", err);
     }
@@ -269,19 +288,12 @@ export default function VideoPlayerScreen() {
     <View style={[styles.container, { backgroundColor: "#000" }]}>
       <Pressable onPress={handleVideoPress} style={styles.videoContainer}>
         {videoSource ? (
-          <Video
-            ref={videoRef}
-            source={videoSource}
+          <VideoView
+            player={player}
             style={styles.video}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay={false}
-            isLooping={false}
-            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-            onLoad={() => setIsLoading(false)}
-            onError={(e) => {
-              console.error("Video load error:", e);
-              setError("Unable to load video. Please try again later.");
-            }}
+            contentFit="contain"
+            nativeControls={false}
+            onFirstFrameRender={() => setIsLoading(false)}
           />
         ) : null}
 
