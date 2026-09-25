@@ -34,6 +34,29 @@ import { Audio } from "expo-av";
  * - Migrate away from expo-av before it's fully removed from Expo
  */
 
+/** Alert.alert is a no-op on react-native-web, so errors would be silent in the browser. */
+function showAlert(title: string, message: string) {
+  if (Platform.OS === "web") {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
+
+/**
+ * expo-av always asks browsers for audio/webm, which Safari before 18.4 can't record.
+ * On web, pick a format the browser supports, at a speech-friendly bitrate that keeps
+ * uploads small.
+ */
+function recordingOptions(): Audio.RecordingOptions {
+  const preset = Audio.RecordingOptionsPresets.HIGH_QUALITY;
+  if (Platform.OS !== "web" || typeof MediaRecorder === "undefined") return preset;
+  const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) =>
+    MediaRecorder.isTypeSupported(type)
+  );
+  return { ...preset, web: { mimeType, bitsPerSecond: 64000 } };
+}
+
 export default function RecordVisitScreen() {
   const { theme } = useTheme();
   const { addVisit, updateVisit, readingLevel, privacyConsent, setPrivacyConsent, plannerQuestions, updatePlannerQuestion } = useAppContext();
@@ -97,10 +120,11 @@ export default function RecordVisitScreen() {
       const { granted } = await Audio.requestPermissionsAsync();
       setPermissionGranted(granted);
       if (!granted) {
-        Alert.alert(
+        showAlert(
           "Permission Required",
-          "InspirEd needs microphone access to record doctor visits. Please enable it in your device settings.",
-          [{ text: "OK" }]
+          Platform.OS === "web"
+            ? "InspirEd needs microphone access to record doctor visits. Please allow the microphone for this site in your browser settings."
+            : "InspirEd needs microphone access to record doctor visits. Please enable it in your device settings."
         );
       } else {
         await Audio.setAudioModeAsync({
@@ -217,14 +241,14 @@ export default function RecordVisitScreen() {
       });
       
       const { recording: newRecording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
+        recordingOptions()
       );
       setRecording(newRecording);
       setIsRecording(true);
       setIsPaused(false);
     } catch (error) {
       console.error("Failed to start recording:", error);
-      Alert.alert("Recording Error", "Could not start recording. Please try again.");
+      showAlert("Recording Error", "Could not start recording. Please try again.");
     }
   };
 
@@ -241,7 +265,7 @@ export default function RecordVisitScreen() {
       }
     } catch (error) {
       console.error("Failed to pause/resume recording:", error);
-      Alert.alert("Recording Error", "Could not pause/resume recording.");
+      showAlert("Recording Error", "Could not pause/resume recording.");
     }
   };
 
@@ -253,7 +277,7 @@ export default function RecordVisitScreen() {
       const audioUri = recording.getURI();
       
       if (!audioUri) {
-        Alert.alert("Recording Error", "No audio was recorded.");
+        showAlert("Recording Error", "No audio was recorded.");
         setRecording(null);
         setIsRecording(false);
         setIsPaused(false);
@@ -269,7 +293,7 @@ export default function RecordVisitScreen() {
       await loadAudioForPlayback(audioUri);
     } catch (error) {
       console.error("Failed to stop recording:", error);
-      Alert.alert("Recording Error", "Could not save the recording. Please try again.");
+      showAlert("Recording Error", "Could not save the recording. Please try again.");
       setRecording(null);
       setIsRecording(false);
       setIsPaused(false);
@@ -291,7 +315,7 @@ export default function RecordVisitScreen() {
       setSound(newSound);
     } catch (error) {
       console.error("Failed to load audio for playback:", error);
-      Alert.alert("Playback Error", "Could not load the recording for playback.");
+      showAlert("Playback Error", "Could not load the recording for playback.");
     }
   };
 
@@ -313,7 +337,7 @@ export default function RecordVisitScreen() {
     try {
       const status = await sound.getStatusAsync();
       if (!status.isLoaded) {
-        Alert.alert("Playback Error", "Recording is no longer available.");
+        showAlert("Playback Error", "Recording is no longer available.");
         setSound(null);
         return;
       }
@@ -430,7 +454,7 @@ export default function RecordVisitScreen() {
       }
     } catch (error) {
       console.error("Failed to save visit:", error);
-      Alert.alert("Error", "Could not save the visit. Please try again.");
+      showAlert("Error", "Could not save the visit. Please try again.");
     }
   };
   
