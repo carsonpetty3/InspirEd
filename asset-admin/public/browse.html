@@ -211,8 +211,8 @@
 <nav class="nav">
   <div class="nav-brand">📚 Asset Library</div>
   <div class="nav-links">
-    <a href="/" class="nav-link">Upload</a>
-    <a href="/browse.html" class="nav-link active">Browse</a>
+    <a href="/admin/" class="nav-link">Upload</a>
+    <a href="/admin/browse.html" class="nav-link active">Browse</a>
   </div>
 </nav>
 
@@ -259,7 +259,7 @@
       <option value="ready">Ready</option>
       <option value="failed">Failed</option>
     </select>
-    <a href="/" class="btn btn-primary">+ Upload</a>
+    <a href="/admin/" class="btn btn-primary">+ Upload</a>
   </div>
 
   <!-- Stats + view toggle -->
@@ -642,7 +642,7 @@ async function generateEmbeddings(id) {
 // ─── Edit ─────────────────────────────────────────────────────
 function editAsset(id) {
   closePanel()
-  window.location.href = `/?edit=${id}`
+  window.location.href = `/admin/?edit=${id}`
 }
 
 // ─── Delete ───────────────────────────────────────────────────

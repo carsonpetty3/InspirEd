@@ -37,6 +37,7 @@ import { askEducationalQuestion } from "@/utils/gemini";
 import { SearchBar } from "@/components/SearchBar";
 import { assetToLearningModule } from "@/utils/assetConvertion"
 import { openAssetPDF } from "../utils/openAsset";
+import { resolveApiUrl } from "@/utils/api";
 import { buildCitationPdfUrl } from "@/utils/rag";
 
 /** Single-line body: compact like typical chat apps (line + minimal vertical padding). */
@@ -239,7 +240,7 @@ export default function EducationScreen() {
         }
         
         const res = await fetch(
-            process.env.EXPO_PUBLIC_API_URL +`/assets/search/query?q=${encodeURIComponent(text)}`
+            resolveApiUrl(`/assets/search/query?q=${encodeURIComponent(text)}`)
         );
 
         const data = await res.json();
@@ -252,7 +253,7 @@ export default function EducationScreen() {
             setLoadingRecommended(true);
 
             const res = await fetch(
-                process.env.EXPO_PUBLIC_API_URL+"/assets/recommended"
+                resolveApiUrl("/assets/recommended")
             );
 
             const data = await res.json();
@@ -552,7 +553,7 @@ export default function EducationScreen() {
                         progress: stored?.progress ?? 0,
                     }}
                     onPress={() =>
-                        openAssetPDF(item.title, process.env.EXPO_PUBLIC_API_URL + item.file_path)
+                        openAssetPDF(item.title, resolveApiUrl(item.file_path))
                     }
                     onToggleComplete={toggleModuleComplete}
                 />
@@ -605,7 +606,7 @@ export default function EducationScreen() {
                             onPress={() =>
                                 openAssetPDF(
                                     item.title,
-                                    process.env.EXPO_PUBLIC_API_URL + item.file_path
+                                    resolveApiUrl(item.file_path)
                                 )
                             }
                             onToggleComplete={toggleModuleComplete}

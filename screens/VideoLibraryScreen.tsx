@@ -13,6 +13,7 @@ import { assetToLearningModule } from "@/utils/assetConvertion"
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
 import { LearningModule } from "@/context/AppContext";
 import { openAssetPDF } from "../utils/openAsset";
+import { resolveApiUrl } from "@/utils/api";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -40,7 +41,7 @@ export default function VideoLibraryScreen() {
             setLoadingVideos(true);
 
             const res = await fetch(
-                process.env.EXPO_PUBLIC_API_URL + `/assets/search/query?q=Animation`
+                resolveApiUrl(`/assets/search/query?q=Animation`)
             );
 
             const data = await res.json();
@@ -141,7 +142,7 @@ export default function VideoLibraryScreen() {
                             onPress={() =>
                                 openAssetPDF(
                                     item.title,
-                                    process.env.EXPO_PUBLIC_API_URL + item.file_path
+                                    resolveApiUrl(item.file_path)
                                 )
                             }
                             onToggleComplete={toggleModuleComplete}

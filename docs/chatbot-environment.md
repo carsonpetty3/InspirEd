@@ -1,8 +1,8 @@
-# Chatbot (Learn → Ask AI) — environment variables & secrets
+# AI features — environment variables & secrets
 
-This document lists what must be configured for the **educational RAG chatbot** (`askEducationalQuestion` in `utils/gemini.ts` → `/api/rag/chat` on **asset-admin** when configured), and what **must not** be committed to a public repository.
+Every AI feature (visit transcription and summaries, Ask AI, lessons, planner questions) runs on the **asset-admin server** (`asset-admin/lib/ai.js`, routes under `/api/ai/*`). The Expo app only calls those routes, so **no secret is ever in the app bundle**.
 
-For full Mongo/RAG setup steps, see **[rag-mongodb-setup.md](./rag-mongodb-setup.md)**. For asset-admin, copy **`asset-admin/.env.example`** → **`asset-admin/.env`** (gitignored).
+For hosting, see **[deployment.md](./deployment.md)**. For Mongo/RAG setup, see **[rag-mongodb-setup.md](./rag-mongodb-setup.md)**.
 
 ---
 
@@ -10,53 +10,43 @@ For full Mongo/RAG setup steps, see **[rag-mongodb-setup.md](./rag-mongodb-setup
 
 | Item | Why |
 |------|-----|
-| **`GEMINI_API_KEY`** (real value) | Grants paid API access; treat like a password. |
+| **`GEMINI_API_KEY`** | Grants paid API access; treat like a password. |
 | **`MONGO_URI`** | Contains cluster host + credentials. |
-| **`app.json` / `app.config.js` values** with real keys or private LAN URLs | Expo bundles `expo.extra`; keys end up in the client build. |
-| **`asset-admin/.env`** | Should stay local; use `.env.example` as a template only. |
+| **`GOOGLE_SERVICE_ACCOUNT_JSON`** | Private key for the Drive video folder. |
+| **`ADMIN_PASSWORD`**, **`BLOB_READ_WRITE_TOKEN`** | Access to content admin and file storage. |
+| **`asset-admin/.env`** | Holds all of the above locally (gitignored). Use `.env.example` as the template. |
 
-Use placeholders in any committed config (e.g. `YOUR_GEMINI_API_KEY_HERE`, `http://YOUR_LAN_IP:3000`). Prefer **EAS Secrets** or CI env vars for production builds.
-
----
-
-## Expo app (mobile client)
-
-Used when you open **Learn → Ask AI** and other Gemini-powered flows.
-
-| Variable / config | Source | Purpose |
-|-------------------|--------|---------|
-| **`GEMINI_API_KEY`** | `app.json` → `expo.extra`, or shell `GEMINI_API_KEY` / `EXPO_PUBLIC_GEMINI_API_KEY` (see `app.config.js`) | Required to call Gemini from the app (RAG chat request headers, fallback local RAG embeddings, non-RAG AI features). |
-| **`EXPO_PUBLIC_RAG_API_URL`** or **`RAG_API_URL` in `expo.extra`** | Same | Base URL of **asset-admin** (no trailing slash), e.g. `http://192.168.x.x:3000`. If **unset**, the app falls back to bundled `medical-knowledge.json` + on-device retrieval (no Mongo server). |
-
-**Important:** Any name starting with **`EXPO_PUBLIC_`** is inlined into the client bundle. It is **not** a secret channel—do not put sensitive tokens there. The Gemini key in `expo.extra` is likewise recoverable from the app binary; the README already flags prototype behavior.
+Never put any of these in `app.json`, `app.config.js`, or an `EXPO_PUBLIC_*` variable — all of those are bundled into the app and readable by anyone.
 
 ---
 
-## asset-admin server (RAG API + PDF ingestion)
+## Expo app
 
-Required when you want **Mongo-backed chunks** and **`/api/rag/chat`**.
-
-| Variable | Typical location | Purpose |
-|----------|------------------|---------|
-| **`MONGO_URI`** | `asset-admin/.env` | MongoDB connection string for `Chunk`, `Asset`, etc. |
-| **`GEMINI_API_KEY`** | `asset-admin/.env` | PDF text extraction, chunk embeddings, RAG chat generation when the request does not override the key. |
-| **`PORT`** | Optional in `.env` | Listen port (default **3000**). |
-
-The chat route accepts **`x-gemini-api-key`** / **`geminiApiKey`** in the JSON body (prototype); production should rely on server-side **`GEMINI_API_KEY`** only.
+| Variable / config | Purpose |
+|-------------------|---------|
+| **`RAG_API_URL`** in `app.json` → `expo.extra` | Server the native app calls: a LAN asset-admin (`http://192.168.x.x:3000`) or the Vercel URL. Not a secret. |
+| **`EXPO_PUBLIC_API_URL`** (optional) | Overrides the above; use `http://localhost:3000` for `npx expo start --web`. The deployed web app needs nothing — it calls its own origin. |
 
 ---
 
-## Quick checklist
+## asset-admin server
 
-1. **asset-admin:** `.env` with **`MONGO_URI`** + **`GEMINI_API_KEY`**; server running and reachable from the device (LAN URL).
-2. **Expo:** **`GEMINI_API_KEY`** configured (see README).
-3. **Expo:** **`EXPO_PUBLIC_RAG_API_URL`** or **`expo.extra.RAG_API_URL`** set to the asset-admin base URL **if** you use Mongo RAG (omit for JSON-only fallback).
+Set in `asset-admin/.env` locally, and in Vercel → Settings → Environment Variables when deployed.
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| **`GEMINI_API_KEY`** | Yes | All AI features, PDF extraction and embeddings. Use a paid-tier key (free-tier prompts may be used by Google). |
+| **`MONGO_URI`** | Deployed: yes. Local: optional | Content database. Without it, AI answers fall back to `assets/medical-knowledge.json`. |
+| **`ADMIN_PASSWORD`** | Deployed: yes | Login for `/admin` and all content-changing routes. Unset on Vercel = admin disabled; unset locally = open. |
+| **`BLOB_READ_WRITE_TOKEN`** | Deployed: yes (auto-added when you connect a Blob store) | Stores uploaded content and long web recordings. Recordings are deleted right after transcription. |
+| **`GOOGLE_SERVICE_ACCOUNT_JSON`**, **`GOOGLE_DRIVE_VIDEO_FOLDER_ID`** | No | Drive video library; the app shows demo videos without them. |
+| **`ALLOWED_ORIGINS`** | No | Extra origins allowed to call the API cross-origin. |
+| **`PORT`** | No | Local listen port (default 3000). |
 
 ---
 
 ## Related docs
 
-- **[README.md](../README.md)** — Gemini key setup for Expo  
-- **[rag-mongodb-setup.md](./rag-mongodb-setup.md)** — End-to-end Mongo RAG wiring  
-- **[rag-evaluation-checklist.md](./rag-evaluation-checklist.md)** — Smoke-test checklist  
-- **`asset-admin/.env.example`** — Server env template  
+- **[deployment.md](./deployment.md)** — Vercel hosting and CI/CD
+- **[rag-mongodb-setup.md](./rag-mongodb-setup.md)** — End-to-end Mongo RAG wiring
+- **[rag-evaluation-checklist.md](./rag-evaluation-checklist.md)** — Smoke-test checklist

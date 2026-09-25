@@ -47,9 +47,7 @@
       "reactCompiler": true
     },
     "extra": {
-      "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY_HERE",
-      "RAG_API_URL": "http://YOUR_LAN_IP:3000",
-      "PROTOTYPE_RAG_MODE": true
+      "RAG_API_URL": "http://YOUR_LAN_IP:3000"
     }
   }
 }

@@ -293,8 +293,8 @@
 <nav class="nav">
   <div class="nav-brand">📚 Asset Library</div>
   <div class="nav-links">
-    <a href="/" class="nav-link active">Upload</a>
-    <a href="/browse.html" class="nav-link">Browse</a>
+    <a href="/admin/" class="nav-link active">Upload</a>
+    <a href="/admin/browse.html" class="nav-link">Browse</a>
   </div>
 </nav>
 
@@ -1957,7 +1957,7 @@ async function submitAsset() {
             <p>Your changes have been saved to MongoDB.</p>
             <br>
             <div style="display:flex;gap:12px;justify-content:center">
-              <button class="btn btn-primary" onclick="location.href='/browse.html'">Back to browser</button>
+              <button class="btn btn-primary" onclick="location.href='/admin/browse.html'">Back to browser</button>
               <button class="btn btn-secondary" onclick="location.reload()">Edit again</button>
             </div>
           </div>
@@ -1986,7 +1986,7 @@ if (editId) {
         padding:12px 16px;margin-bottom:20px;font-size:14px;color:#92400e;
         display:flex;justify-content:space-between;align-items:center">
         <span>✏️ <strong>Edit mode</strong> — you are editing an existing asset. All fields are pre-filled.</span>
-        <a href="/browse.html" style="color:#92400e;font-size:13px">Cancel → back to browser</a>
+        <a href="/admin/browse.html" style="color:#92400e;font-size:13px">Cancel → back to browser</a>
       </div>`)
   })
 } else {
