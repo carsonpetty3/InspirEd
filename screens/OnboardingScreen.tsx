@@ -139,7 +139,7 @@ export default function OnboardingScreen() {
             <View style={styles.consentItemText}>
               <ThemedText style={styles.consentItemTitle}>Stored on Your Device</ThemedText>
               <ThemedText style={[styles.consentItemDescription, { color: theme.textSecondary }]}>
-                Your recordings and visit information are saved locally on your phone. We don't upload your data to our servers.
+                Your recordings and visit information are saved on this device. We don't keep copies of them.
               </ThemedText>
             </View>
           </View>
@@ -149,7 +149,7 @@ export default function OnboardingScreen() {
             <View style={styles.consentItemText}>
               <ThemedText style={styles.consentItemTitle}>AI-Powered Summaries</ThemedText>
               <ThemedText style={[styles.consentItemDescription, { color: theme.textSecondary }]}>
-                When you record a visit, the audio is sent securely to Google's AI service to create transcriptions and summaries. This helps make medical information easier to understand.
+                When you record a visit, the audio passes securely through the InspirEd service to Google's AI to create transcriptions and summaries, and is deleted once it's processed. This helps make medical information easier to understand.
               </ThemedText>
             </View>
           </View>

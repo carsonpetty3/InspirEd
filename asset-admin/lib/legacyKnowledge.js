@@ -52,7 +52,11 @@ async function searchJson(query, topK, minSimilarity) {
 async function searchLegacyKnowledge(query, topK = 3, minSimilarity = 0.3) {
   if (isDbConnected()) {
     try {
-      const fromMongo = await searchRagChunks({ query, RagChunk, topK, minSimilarity })
+      // searchRagChunks returns the closest chunks even when none are relevant; the AI
+      // features must only ever see sources that actually match the question.
+      const fromMongo = (await searchRagChunks({ query, RagChunk, topK, minSimilarity })).filter(
+        (r) => r.similarity >= minSimilarity
+      )
       if (fromMongo.length) return fromMongo
     } catch (err) {
       console.warn('[legacyKnowledge] RagChunk search failed, using JSON:', err.message)

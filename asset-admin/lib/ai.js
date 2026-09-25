@@ -33,22 +33,32 @@ async function generate(parts, maxRetries = 3) {
 const generateText = (prompt) => generate([{ text: prompt }])
 
 // ── Retrieval: Mongo Chunk → legacy RagChunk / medical-knowledge.json ─────────
+// Every answer the app shows must come from approved content (README "AI Safeguards").
+// With REQUIRE_CLINICAL_REVIEW=true, only chunks from assets marked clinically reviewed
+// are used, and the unreviewed legacy knowledge base is skipped.
+const requireClinicalReview = () => process.env.REQUIRE_CLINICAL_REVIEW === 'true'
+
 async function retrieveContextWithCitations(query, topK) {
   if (isDbConnected()) {
     try {
       const { results } = await retrieveChunks(query, {
         apiKey: process.env.GEMINI_API_KEY,
         topK,
-        minSimilarity: 0.3
+        minSimilarity: 0.3,
+        clinicalReviewedOnly: requireClinicalReview()
       })
       if (results.length) return await buildContextAndCitations(results)
     } catch (err) {
       console.warn('[ai] Chunk retrieval failed, using legacy knowledge:', err.message)
     }
   }
+  if (requireClinicalReview()) return { context: '', citations: [] }
   const legacy = await searchLegacyKnowledge(query, topK)
   return buildLegacyContextAndCitations(legacy)
 }
+
+const NOT_IN_LIBRARY =
+  "This isn't covered in the approved InspirEd library yet. Please ask your care team about it."
 
 // ── Audio (Files API for long recordings) ──────────────────────────────────
 function normalizeAudioMime(mimeType) {
@@ -168,26 +178,67 @@ Extract the following and return as JSON:
   "keyPoints": ["array of 3-5 key points from the visit"],
   "diagnoses": ["array of any diagnoses or conditions mentioned"],
   "actions": ["array of action items for the parent/caregiver"],
-  "medicalTerms": [{"term": "medical term", "explanation": "simple explanation at ${readingLevel}th grade level"}]
+  "medicalTerms": ["array of medical terms that were said in the visit"]
 }
 
 Guidelines:
+- Use ONLY what was said in the transcription. Do not add, interpret, or diagnose.
 - keyPoints: Most important takeaways a parent should remember
 - diagnoses: Any medical conditions, diagnoses, or health status updates mentioned
 - actions: Things the parent needs to do (medications, follow-ups, monitoring, etc.)
-- medicalTerms: Any medical jargon with simple explanations appropriate for a ${readingLevel}th grade reading level
+- medicalTerms: Medical jargon exactly as it was said. Do not explain the terms.
 
 If a category has no relevant information, return an empty array for that field.`)
 
   const jsonMatch = (text || '{}').match(/\{[\s\S]*\}/)
   if (!jsonMatch) return empty
   const parsed = JSON.parse(jsonMatch[0])
+  const terms = (parsed.medicalTerms || [])
+    .map((t) => (typeof t === 'string' ? t : t?.term))
+    .filter(Boolean)
   return {
     keyPoints: parsed.keyPoints || [],
     diagnoses: parsed.diagnoses || [],
     actions: parsed.actions || [],
-    medicalTerms: parsed.medicalTerms || []
+    medicalTerms: await explainTermsFromLibrary(terms, readingLevel)
   }
+}
+
+/**
+ * The scribe's terms are retrieval keys: each explanation is written only from approved
+ * sources that match the term. Terms with no match say so instead of being explained
+ * from Gemini's general knowledge.
+ */
+async function explainTermsFromLibrary(terms, readingLevel) {
+  const unique = [...new Set(terms.map((t) => String(t).trim()).filter(Boolean))].slice(0, 10)
+  if (!unique.length) return []
+
+  const sourced = await Promise.all(
+    unique.map(async (term) => ({ term, ...(await retrieveContextWithCitations(term, 2)) }))
+  )
+  const withSources = sourced.filter((s) => s.context)
+  const explanations = new Map()
+
+  if (withSources.length) {
+    const text = await generateText(`You explain medical terms to parents of children with chronic pulmonary conditions.
+For each term below, write a 1-2 sentence explanation at a ${readingLevel}th grade reading level using ONLY that term's sources.
+If a term's sources do not explain it, use exactly this explanation: "${NOT_IN_LIBRARY}"
+Do not add facts that are not in the sources, and do not give medical advice.
+
+${withSources.map((s, i) => `TERM ${i + 1}: ${s.term}\n${s.context}`).join('\n\n=====\n\n')}
+
+Return ONLY a JSON array: [{"term": "...", "explanation": "..."}]`)
+    const match = (text || '[]').match(/\[[\s\S]*\]/)
+    for (const row of match ? JSON.parse(match[0]) : []) {
+      if (row?.term && row?.explanation) explanations.set(String(row.term).toLowerCase(), row.explanation)
+    }
+  }
+
+  return sourced.map((s) => ({
+    term: s.term,
+    explanation: (s.context && explanations.get(s.term.toLowerCase())) || NOT_IN_LIBRARY,
+    citations: s.citations
+  }))
 }
 
 async function suggestPlannerQuestions({ visits = [] }) {
@@ -251,7 +302,7 @@ IMPORTANT GUIDELINES:
 3. Be empathetic and supportive - these parents are managing a child's chronic condition
 4. If the answer isn't in the visit notes, say so honestly and suggest they ask their doctor
 5. Never give specific medical advice - always encourage discussing important decisions with their healthcare provider
-6. Explain any medical terms in simple language
+6. Only explain medical terms using the explanations in the visit information; do not add outside medical knowledge
 7. Keep your response concise but complete
 
 VISIT INFORMATION:
@@ -267,14 +318,28 @@ Please provide a helpful, accurate response:`)
 
 // ── Learning modules + educational chat (RAG-grounded) ─────────────────────
 async function generateModuleLesson({ moduleTitle, moduleDescription, topics = [], difficulty, readingLevel = 8 }) {
-  const { context: ragContext } = await retrieveContextWithCitations(
+  const { context: ragContext, citations } = await retrieveContextWithCitations(
     `${moduleTitle} ${topics.join(' ')} pulmonary children`,
     3
   )
 
-  const sourceContext = ragContext
-    ? `\n\nUse the following trusted medical sources to inform your content. Base your educational material on this verified information:\n\n${ragContext}\n\n`
-    : ''
+  if (!ragContext) {
+    return {
+      introduction: `We don't have approved learning material for "${moduleTitle}" yet.`,
+      sections: [
+        {
+          title: 'Not in the library yet',
+          content: NOT_IN_LIBRARY,
+          keyTakeaway: 'Lessons are only built from content your care team has approved.'
+        }
+      ],
+      summary: NOT_IN_LIBRARY,
+      practicalTips: ['Write down your questions about this topic to bring to your next visit.'],
+      citations: []
+    }
+  }
+
+  const sourceContext = `\n\nBuild this lesson ONLY from the following approved medical sources:\n\n${ragContext}\n\n`
 
   const text = await generateText(`You are creating educational content for parents of children with chronic pulmonary conditions. Generate a comprehensive lesson for the following learning module:
 
@@ -291,7 +356,7 @@ IMPORTANT GUIDELINES:
 5. NEVER provide specific medical advice - always encourage consulting with their healthcare provider
 6. Make the content encouraging and supportive
 7. Include real-world examples parents can relate to
-8. Ground your content in the trusted medical sources provided above when available
+8. Use ONLY facts from the approved sources above. If they don't cover a topic, leave it out rather than filling it in from general knowledge
 
 Generate the lesson in the following JSON format (respond with ONLY valid JSON, no markdown):
 {
@@ -311,7 +376,7 @@ Create 3-4 sections covering the main topics. Each section should be informative
 
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('No valid JSON found in response')
-  return JSON.parse(jsonMatch[0])
+  return { ...JSON.parse(jsonMatch[0]), citations }
 }
 
 async function askEducationalQuestion({ question, conversationHistory = [], readingLevel = 8 }) {
@@ -339,8 +404,8 @@ IMPORTANT GUIDELINES:
 1. Use clear, simple language appropriate for a ${readingLevel}th grade reading level.
 2. Be empathetic and supportive.
 3. Focus on educational information; never provide personal medical advice or diagnosis.
-4. Answer using ONLY the trusted medical sources above when they contain relevant information.
-5. If the sources do not contain enough information, say so honestly.
+4. Answer using ONLY the trusted medical sources above. Never add facts from general knowledge.
+5. If the sources do not answer the question, say it isn't covered in the approved InspirEd library yet and suggest asking their care team.
 6. When you use information from a source, include inline citation markers like [1], [2], matching the source numbers above.
 
 ${historyContext}PARENT'S QUESTION:

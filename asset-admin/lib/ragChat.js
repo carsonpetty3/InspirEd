@@ -59,8 +59,8 @@ IMPORTANT GUIDELINES:
 1. Use clear, simple language appropriate for a ${readingLevel}th grade reading level.
 2. Be empathetic and supportive.
 3. Focus on educational information; never provide personal medical advice or diagnosis.
-4. Answer using ONLY the trusted medical sources above when they contain relevant information.
-5. If the sources do not contain enough information, say so honestly.
+4. Answer using ONLY the trusted medical sources above. Never add facts from general knowledge.
+5. If the sources do not answer the question, say it isn't covered in the approved InspirEd library yet and suggest asking their care team.
 6. When you use information from a source, include inline citation markers like [1], [2], matching the source numbers above.
 
 ${historyContext}PARENT'S QUESTION:
