@@ -13,13 +13,14 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@vercel/blob": "^2.8.0",
+    "@vercel/functions": "^3.9.9",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
     "mongoose": "^9.3.3",
-    "pdf-parse": "^1.1.1",
     "multer": "^2.1.1",
-    "express-rate-limit": "^7.5.0"
-  },
-  "devDependencies": {}
+    "pdf-parse": "^1.1.1"
+  }
 }

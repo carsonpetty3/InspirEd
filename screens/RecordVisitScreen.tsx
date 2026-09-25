@@ -418,12 +418,8 @@ export default function RecordVisitScreen() {
         });
         setProcessingMode(false);
         
-        const isWebLimitation = Platform.OS === "web" || errorMessage.includes("not available on web");
-        
-        const title = isWebLimitation ? "Web Limitation" : "Processing Failed";
-        const message = isWebLimitation 
-          ? "Audio transcription requires the Expo Go app on your phone. The visit has been saved without transcription. Please use the QR code to open InspirEd on your mobile device for full functionality."
-          : `Could not transcribe the recording: ${errorMessage}. The visit has been saved, but you may need to review the audio manually.`;
+        const title = "Processing Failed";
+        const message = `Could not transcribe the recording: ${errorMessage}. The visit has been saved, but you may need to review the audio manually.`;
         
         if (Platform.OS === "web") {
           window.alert(`${title}\n\n${message}`);

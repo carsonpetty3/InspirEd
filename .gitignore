@@ -46,3 +46,6 @@ app-example
 .vs/
 
 asset-admin/.env
+
+# Vercel CLI project link
+.vercel

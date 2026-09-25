@@ -7,8 +7,8 @@ Educational **chunks** can live in **MongoDB** on two tiers:
 
 The Expo app:
 
-- If **`RAG_API_URL`** / **`EXPO_PUBLIC_RAG_API_URL`** is set → uses **`/api/rag/retrieve`** and **`/api/rag/chat`** (Gemini key is still required on the **device** in prototype mode, or on the **server** via `GEMINI_API_KEY`).
-- If not set → falls back to bundled **`medical-knowledge.json`** and client-side embedding (previous behavior).
+- Calls **`/api/ai/*`** on asset-admin (`RAG_API_URL` on native; its own origin on the web). The Gemini key lives only on the **server** (`GEMINI_API_KEY`).
+- Retrieval tries Mongo **`Chunk`** first, then the legacy **`RagChunk`** collection, then **`assets/medical-knowledge.json`** on the server.
 
 **Secrets / env overview:** **[chatbot-environment.md](./chatbot-environment.md)**.
 
@@ -34,7 +34,7 @@ From `asset-admin/`:
 1. Copy `.env.example` → `.env` (do **not** commit `.env`).
 2. Set:
    - **`MONGO_URI`** — Atlas connection string  
-   - **`GEMINI_API_KEY`** — required for ingestion (PDF extract, embeddings) and for **`/api/rag/*`** if you do not send a key from the client  
+   - **`GEMINI_API_KEY`** — required for ingestion (PDF extract, embeddings) and for all **`/api/rag/*`** and **`/api/ai/*`** routes  
    - **`PORT`** — optional, default `3000`
 
 Atlas vector index (optional at small scale): see **[asset-admin/ATLAS_INDEX.md](../asset-admin/ATLAS_INDEX.md)**.
@@ -67,7 +67,6 @@ Requires extractable text: **PDF / TXT / HTML**, or a **transcript** (`.txt`, `.
 ```bash
 curl -s -X POST http://localhost:3000/api/rag/retrieve \
   -H "Content-Type: application/json" \
-  -H "x-gemini-api-key: $GEMINI_API_KEY" \
   -d '{"query":"pulmonary surfactant","topK":3}'
 ```
 
@@ -76,7 +75,6 @@ curl -s -X POST http://localhost:3000/api/rag/retrieve \
 ```bash
 curl -s -X POST http://localhost:3000/api/rag/chat \
   -H "Content-Type: application/json" \
-  -H "x-gemini-api-key: $GEMINI_API_KEY" \
   -d '{"question":"What is surfactant?","readingLevel":8,"conversationHistory":[]}'
 ```
 
@@ -118,7 +116,7 @@ Chunk ingest uses **`gemini-embedding-001`** (768 dims via `outputDimensionality
 |--------|------------------|
 | `results: []` / empty chat | Asset **`embedding_status`** must be **`ready`**; ensure PDF/transcript produced text; lower **`minSimilarity`** only when testing legacy search |
 | Cannot reach API from phone | Firewall; correct **LAN IP**; iOS ATS may block plain HTTP in release builds |
-| `GEMINI_API_KEY is not configured` on server | Set key in **`asset-admin/.env`** or pass **`x-gemini-api-key`** / **`geminiApiKey`** in JSON (prototype only) |
+| `GEMINI_API_KEY is not configured` on server | Set key in **`asset-admin/.env`** (or Vercel environment variables). Client-supplied keys are ignored. |
 
 ## Security
 

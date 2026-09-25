@@ -1,8 +1,8 @@
-const fs = require('fs')
 const path = require('path')
 const Asset = require('../models/Asset')
 const Chunk = require('../models/Chunk')
 const { embedText, extractTextFromPdfBuffer } = require('./geminiRag')
+const { readStoredFile, storedExtname } = require('./storage')
 
 /**
  * Local text extraction for PDFs when Gemini returns nothing (scanned PDFs, API limits, etc.).
@@ -21,20 +21,12 @@ async function extractPdfTextWithPdfParse(buffer) {
   }
 }
 
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads')
-
 const CHUNK_WORDS = 800
 const CHUNK_OVERLAP = 100
 const INGEST_VERSION = '1.0'
 
 /** @type {Set<string>} */
 const ingestLocks = new Set()
-
-function absoluteUploadPath(storedPath) {
-  if (!storedPath) return null
-  const base = path.basename(storedPath)
-  return path.join(UPLOAD_DIR, base)
-}
 
 function chunkWords(text, sourceLabel) {
   const words = text.split(/\s+/).filter((w) => w.length > 0)
@@ -71,21 +63,22 @@ function chunkWords(text, sourceLabel) {
 async function extractAllText(asset, apiKey) {
   const parts = []
 
-  const mainPath = absoluteUploadPath(asset.file_path)
-  const transcriptPath = absoluteUploadPath(asset.transcript_file_path)
+  const mainPath = asset.file_path || null
+  const transcriptPath = asset.transcript_file_path || null
+  const mainBuf = await readStoredFile(mainPath)
 
-  if (asset.file_path && mainPath && !fs.existsSync(mainPath)) {
+  if (mainPath && !mainBuf) {
     throw new Error(
-      `Upload file is missing on the server (${path.basename(mainPath)}). The file may have been deleted from asset-admin/uploads — re-upload the asset.`
+      `Upload file is missing on the server (${path.basename(mainPath)}). The file may have been deleted from storage — re-upload the asset.`
     )
   }
 
-  if (mainPath && fs.existsSync(mainPath)) {
-    const ext = path.extname(mainPath).toLowerCase()
+  if (mainBuf) {
+    const ext = storedExtname(mainPath)
     if (['.txt', '.html'].includes(ext)) {
-      parts.push(fs.readFileSync(mainPath, 'utf8'))
+      parts.push(mainBuf.toString('utf8'))
     } else if (ext === '.pdf') {
-      const buf = fs.readFileSync(mainPath)
+      const buf = mainBuf
       let pdfText = (await extractTextFromPdfBuffer(buf, apiKey)) || ''
       if (!pdfText.trim()) {
         pdfText = await extractPdfTextWithPdfParse(buf)
@@ -112,10 +105,11 @@ async function extractAllText(asset, apiKey) {
     }
   }
 
-  if (transcriptPath && fs.existsSync(transcriptPath)) {
-    const ext = path.extname(transcriptPath).toLowerCase()
+  const transcriptBuf = await readStoredFile(transcriptPath)
+  if (transcriptBuf) {
+    const ext = storedExtname(transcriptPath)
     if (['.txt', '.vtt', '.srt'].includes(ext)) {
-      parts.push(fs.readFileSync(transcriptPath, 'utf8'))
+      parts.push(transcriptBuf.toString('utf8'))
     }
   }
 
@@ -222,11 +216,14 @@ async function runIngestForAsset(assetId, opts = {}) {
  * @param {{ apiKey?: string }} [opts]
  */
 function queueIngest(assetId, opts = {}) {
-  setImmediate(() => {
-    runIngestForAsset(assetId, opts).catch((e) =>
-      console.error('[ragIngest] fatal', assetId, e)
-    )
-  })
+  const job = new Promise((resolve) => setImmediate(resolve))
+    .then(() => runIngestForAsset(assetId, opts))
+    .catch((e) => console.error('[ragIngest] fatal', assetId, e))
+
+  // Serverless functions freeze once the response is sent; keep this one alive until ingest ends.
+  if (process.env.VERCEL) {
+    require('@vercel/functions').waitUntil(job)
+  }
 }
 
 module.exports = {

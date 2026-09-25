@@ -165,40 +165,34 @@ npx expo start -c
 
 ## Configuration
 
-Because the project runs through Expo Go, a plain `.env` file will not be picked up during local development. Use one of the two options below.
+All secrets (the Gemini key, MongoDB URI, Drive service account) live on the **asset-admin server**, never in the app. The app only needs to know where that server is.
 
-### Option 1 (recommended): `app.json`
+### 1. Start asset-admin locally
 
-Add an `extra` block inside `"expo"`:
+```bash
+cd asset-admin
+cp .env.example .env   # then fill in GEMINI_API_KEY (MONGO_URI optional)
+npm install
+npm start              # http://localhost:3000, content admin at /admin
+```
+
+### 2. Point the app at it
+
+In `app.json`, set `expo.extra.RAG_API_URL` to the server your phone can reach, for example your laptop's LAN IP:
 
 ```json
 "extra": {
-  "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY_HERE"
+  "RAG_API_URL": "http://192.168.1.5:3000"
 }
 ```
 
-### Option 2: machine environment variable
+You can also use the deployed Vercel URL instead of running the server yourself. For `npx expo start --web`, set `EXPO_PUBLIC_API_URL=http://localhost:3000`.
 
-macOS and Linux:
+Do not put keys in `app.json` or any `EXPO_PUBLIC_*` variable: both ship inside the app bundle.
 
-```bash
-export GEMINI_API_KEY=your_key_here
-npx expo start
-```
+### Web deployment
 
-Windows PowerShell:
-
-```powershell
-$env:GEMINI_API_KEY="your_key_here"
-npx expo start
-```
-
-### Optional: video library
-
-```bash
-GOOGLE_SERVICE_ACCOUNT_JSON=your_service_account_credentials
-GOOGLE_DRIVE_VIDEO_FOLDER_ID=your_drive_folder_id
-```
+The app is hosted on Vercel for demos (mock data only). See [`docs/deployment.md`](docs/deployment.md).
 
 > **Never commit real API keys, `MONGO_URI` values, or private service URLs.** See [`docs/chatbot-environment.md`](docs/chatbot-environment.md) for the full secrets checklist.
 
@@ -229,18 +223,14 @@ GOOGLE_DRIVE_VIDEO_FOLDER_ID=your_drive_folder_id
 Grounded answers can be sourced two ways.
 
 **1. MongoDB chunks (recommended)**
-Upload assets through `asset-admin`, generating embeddings on submit or through **Browse → Generate embeddings**. Point the app at the server with `RAG_API_URL` or `EXPO_PUBLIC_RAG_API_URL`. Setup steps are in [`docs/rag-mongodb-setup.md`](docs/rag-mongodb-setup.md).
+Upload assets through `asset-admin`, generating embeddings on submit or through **Browse → Generate embeddings**. Point the app at the server with `RAG_API_URL` (see [Configuration](#configuration)). Setup steps are in [`docs/rag-mongodb-setup.md`](docs/rag-mongodb-setup.md).
 
 **2. Bundled fallback**
-Run the processing script to refresh the on-device index:
+When MongoDB has no matching chunks, the server falls back to `assets/medical-knowledge.json`. Refresh it with:
 
 ```bash
 node scripts/process-pdfs.js
 ```
-
-Leaving `RAG_API_URL` empty in `app.json` restricts the app to the bundled JSON with on-device retrieval.
-
-> `PROTOTYPE_RAG_MODE` flags client-side keys. Secrets must move server-side before any production deployment.
 
 ---
 
@@ -307,6 +297,7 @@ The client and EFA hold a grant to run a co-design study with physicians and fam
 | `FAQ.md` | Common questions about setup and behavior |
 | `docs/chatbot-environment.md` | Environment variables and secrets checklist |
 | `docs/rag-mongodb-setup.md` | MongoDB knowledge base setup |
+| `docs/deployment.md` | Vercel hosting, CI/CD, and environment variables |
 
 ---
 
