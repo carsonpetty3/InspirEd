@@ -2,6 +2,8 @@
 
 Every AI feature (visit transcription and summaries, Ask AI, lessons, planner questions) runs on the **asset-admin server** (`asset-admin/lib/ai.js`, routes under `/api/ai/*`). The Expo app only calls those routes, so **no secret is ever in the app bundle**.
 
+Ask AI, lessons and medical-term explanations only use approved library content. When nothing relevant is found, the app says so instead of asking Gemini.
+
 For hosting, see **[deployment.md](./deployment.md)**. For Mongo/RAG setup, see **[rag-mongodb-setup.md](./rag-mongodb-setup.md)**.
 
 ---
@@ -40,6 +42,7 @@ Set in `asset-admin/.env` locally, and in Vercel → Settings → Environment Va
 | **`ADMIN_PASSWORD`** | Deployed: yes | Login for `/admin` and all content-changing routes. Unset on Vercel = admin disabled; unset locally = open. |
 | **`BLOB_READ_WRITE_TOKEN`** | Deployed: yes (auto-added when you connect a Blob store) | Stores uploaded content and long web recordings. Recordings are deleted right after transcription. |
 | **`GOOGLE_SERVICE_ACCOUNT_JSON`**, **`GOOGLE_DRIVE_VIDEO_FOLDER_ID`** | No | Drive video library; the app shows demo videos without them. |
+| **`REQUIRE_CLINICAL_REVIEW`** | No | `true` = only answer from assets marked clinically reviewed, and skip the legacy JSON fallback. |
 | **`ALLOWED_ORIGINS`** | No | Extra origins allowed to call the API cross-origin. |
 | **`PORT`** | No | Local listen port (default 3000). |
 

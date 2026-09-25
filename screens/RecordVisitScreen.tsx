@@ -517,7 +517,7 @@ export default function RecordVisitScreen() {
               <View style={styles.consentItemText}>
                 <ThemedText style={styles.consentItemTitle}>Stored on Your Device</ThemedText>
                 <ThemedText style={styles.consentItemDescription}>
-                  Recordings stay on your phone. We don't have access to them.
+                  Recordings are saved on this device. We don't keep copies.
                 </ThemedText>
               </View>
             </View>
@@ -527,7 +527,7 @@ export default function RecordVisitScreen() {
               <View style={styles.consentItemText}>
                 <ThemedText style={styles.consentItemTitle}>AI Processing</ThemedText>
                 <ThemedText style={styles.consentItemDescription}>
-                  Audio is sent securely to Google AI to create your summary.
+                  Audio passes securely through InspirEd to Google AI to create your summary, then is deleted.
                 </ThemedText>
               </View>
             </View>
