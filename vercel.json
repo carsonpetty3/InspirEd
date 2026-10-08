@@ -20,7 +20,7 @@
       "destination": "/api/index"
     },
     {
-      "source": "/admin/:path*",
+      "source": "/admin/(.*)",
       "destination": "/api/index"
     },
     {
