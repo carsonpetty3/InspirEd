@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const PDF_DIR = path.join(__dirname, '..', 'attached_assets');
 const OUTPUT_FILE = path.join(__dirname, '..', 'assets', 'medical-knowledge.json');
 
@@ -43,7 +44,7 @@ async function extractTextFromPDF(pdfPath) {
   const pdfData = fs.readFileSync(pdfPath);
   const base64PDF = pdfData.toString('base64');
   
-  const response = await callGeminiAPI('models/gemini-2.5-flash:generateContent', {
+  const response = await callGeminiAPI(`models/${GEMINI_MODEL}:generateContent`, {
     contents: [{
       parts: [
         {

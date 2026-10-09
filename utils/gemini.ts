@@ -6,6 +6,10 @@ import { getRAGContext, getRAGContextWithCitations, loadKnowledgeBase, Citation,
 
 export type { Citation } from "./rag";
 
+// Override with GEMINI_MODEL in .env (e.g. "gemini-flash-latest" to track Google's newest Flash model).
+const GEMINI_MODEL: string =
+  Constants.expoConfig?.extra?.GEMINI_MODEL || "gemini-3.8-flash";
+
 const getApiKey = (): string => {
   const apiKey = 
     process.env.GEMINI_API_KEY || 
@@ -60,7 +64,7 @@ Do not add any commentary or additional text - just the transcription.`,
     ];
 
     const transcriptionResponse = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: transcriptionContents,
     });
 
@@ -94,7 +98,7 @@ ${transcription}`,
     ];
 
     const summaryResponse = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: summaryContents,
     });
 
@@ -184,7 +188,7 @@ Guidelines:
 If a category has no relevant information, return an empty array for that field.`;
 
     const response = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: prompt,
     });
 
@@ -237,7 +241,7 @@ Focus on:
 - Planning for the future`;
 
     const response = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: prompt,
     });
 
@@ -330,7 +334,7 @@ ${question}
 Please provide a helpful, accurate response:`;
 
     const response = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: [prompt],
     });
 
@@ -370,7 +374,7 @@ async function callGeminiWithRetry(
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const response = await getAI().models.generateContent({
-        model: "gemini-2.5-flash",
+        model: GEMINI_MODEL,
         contents: [prompt],
       });
       return response.text || "";
@@ -547,7 +551,7 @@ ${question}
 Please provide a helpful, educational response with inline citations where appropriate:`;
 
     const response = await getAI().models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: [prompt],
     });
 

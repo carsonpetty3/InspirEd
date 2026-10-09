@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
 async function transcribeAudio(audioPath) {
   console.log('\n🎙️ Transcribing audio file...\n');
@@ -43,7 +44,7 @@ async function transcribeAudio(audioPath) {
   console.log('\n⏳ Sending to Gemini API...\n');
   
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
