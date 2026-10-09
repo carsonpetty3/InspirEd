@@ -6,8 +6,9 @@
 const EMBEDDING_MODEL = 'models/gemini-embedding-001'
 /** Keep aligned with query embeddings and atlas-vector-index.example.json (768). */
 const EMBEDDING_DIM = 768
-/** PDF text extraction; keep in sync with supported Gemini models (2.0-flash retired for new users). */
-const PDF_MODEL = 'models/gemini-2.5-flash:generateContent'
+/** Generation model for PDF extraction and chat; override with GEMINI_MODEL in asset-admin/.env. */
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+const PDF_MODEL = `models/${GEMINI_MODEL}:generateContent`
 
 async function callGeminiAPI(endpoint, body, apiKey) {
   const key = apiKey || process.env.GEMINI_API_KEY
@@ -99,7 +100,7 @@ Return the full extracted text, maintaining readability.`
   return response.candidates?.[0]?.content?.parts?.[0]?.text || ''
 }
 
-const CHAT_MODEL = 'models/gemini-2.5-flash:generateContent'
+const CHAT_MODEL = `models/${GEMINI_MODEL}:generateContent`
 
 /**
  * @param {string} prompt
