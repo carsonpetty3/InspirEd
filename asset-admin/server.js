@@ -1,4 +1,5 @@
 require('dotenv').config()
+console.log('URI loaded:', process.env.MONGO_URI ? process.env.MONGO_URI.replace(/:[^:@]+@/, ':***@') : 'UNDEFINED');
 const express  = require('express')
 const cors     = require('cors')
 const mongoose = require('mongoose')

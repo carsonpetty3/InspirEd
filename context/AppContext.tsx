@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { DEMO_PROFILES, DemoProfileKind } from "@/constants/demoProfiles";
 
 export type Visit = {
     id: string;
@@ -134,6 +135,8 @@ type AppContextType = {
     cachedVideos: CachedVideo[];
     setCachedVideos: (videos: CachedVideo[]) => void;
     toggleModuleComplete: (id: string) => void;
+    loadDemoProfile: (kind: DemoProfileKind) => Promise<void>
+    clearDemoProfile: () => Promise<void>
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -148,7 +151,8 @@ const STORAGE_KEYS = {
     PRIVACY_CONSENT_DATE: "@InspirEd:privacyConsentDate",
     VIDEO_WATCH_HISTORY: "@InspirEd:videoWatchHistory",
     CACHED_VIDEOS: "@InspirEd:cachedVideos",
-    LEARNING_MODULES: "@InspirEd:learningModules"
+    LEARNING_MODULES: "@InspirEd:learningModules",
+    USER_NAME: "@InspirEd:userName",
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -561,10 +565,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    // Inside AppProvider:
+    const loadDemoProfile = async (kind: DemoProfileKind) => {
+        await clearAllData();                        // start from a clean slate
+        const profile = DEMO_PROFILES[kind];
+        setUserName(profile.name);
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_NAME, profile.name);
+        await updateReadingLevel(profile.readingLevel);
+        await setPrivacyConsent(true);
+        await completeOnboarding();
+        loadSampleVisits();
+    };
+
+    const clearDemoProfile = async () => {
+        await clearAllData();
+        await AsyncStorage.multiRemove([STORAGE_KEYS.READING_LEVEL, STORAGE_KEYS.USER_NAME]);
+        setUserName("Parent");
+        setReadingLevel(8);
+        await resetOnboarding();                     // back to first-launch state
+    };
+
     useEffect(() => {
         const loadStoredData = async () => {
             try {
-                const [storedOnboarding, storedLevel, storedVisits, storedChatMessages, storedQuestions, storedConsent, storedConsentDate, storedVideoHistory, storedCachedVideos, storedModules] =
+                const [storedOnboarding, storedLevel, storedVisits, storedChatMessages, storedQuestions, storedConsent, storedConsentDate, storedVideoHistory, storedCachedVideos, storedModules, storedUserName] =
                     await Promise.all([
                         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETED),
                         AsyncStorage.getItem(STORAGE_KEYS.READING_LEVEL),
@@ -576,6 +600,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                         AsyncStorage.getItem(STORAGE_KEYS.VIDEO_WATCH_HISTORY),
                         AsyncStorage.getItem(STORAGE_KEYS.CACHED_VIDEOS),
                         AsyncStorage.getItem(STORAGE_KEYS.LEARNING_MODULES),
+                        AsyncStorage.getItem(STORAGE_KEYS.USER_NAME),
                     ]);
 
                 if (storedOnboarding === "true") {
@@ -698,6 +723,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 cachedVideos,
                 setCachedVideos,
                 toggleModuleComplete,
+                loadDemoProfile,
+                clearDemoProfile,
             }}
         >
             {children}

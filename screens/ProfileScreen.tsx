@@ -34,6 +34,8 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
     privacyConsentDate,
     visits,
     clearAllData,
+    loadDemoProfile,
+    clearDemoProfile,
   } = useAppContext();
 
   const handleClearData = () => {
@@ -59,6 +61,17 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
           { text: "Delete Everything", style: "destructive", onPress: confirmClear },
         ]
       );
+    }
+  };
+
+  const confirmDemo = (label: string, action: () => Promise<void>) => {
+    if (Platform.OS === "web") {
+      if (window.confirm(`${label}? This replaces all current data on this device.`)) action();
+    } else {
+      Alert.alert(label, "This replaces all current data on this device.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Continue", onPress: () => action() },
+      ]);
     }
   };
 
@@ -166,6 +179,42 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
           </View>
         </SettingSection>
 
+                {isAdmin && (
+          <SettingSection title="Demo Profiles">
+            <View style={{ gap: Spacing.sm }}>
+              <Pressable
+                onPress={() => confirmDemo("Load Low-Literacy Demo", () => loadDemoProfile("low"))}
+                style={[styles.redoButton, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}
+              >
+                <Icon name="person" size={16} color={theme.primary} />
+                <ThemedText style={[styles.redoButtonText, { color: theme.primary }]}>
+                  Load Low-Literacy Demo
+                </ThemedText>
+              </Pressable>
+
+              <Pressable
+                onPress={() => confirmDemo("Load High-Literacy Demo", () => loadDemoProfile("high"))}
+                style={[styles.redoButton, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}
+              >
+                <Icon name="person" size={16} color={theme.primary} />
+                <ThemedText style={[styles.redoButtonText, { color: theme.primary }]}>
+                  Load High-Literacy Demo
+                </ThemedText>
+              </Pressable>
+
+              <Pressable
+                onPress={() => confirmDemo("Reset Demo", clearDemoProfile)}
+                style={[styles.redoButton, { borderColor: "#FF6B6B" }]}
+              >
+                <Icon name="trash" size={16} color="#FF6B6B" />
+                <ThemedText style={[styles.redoButtonText, { color: "#FF6B6B" }]}>
+                  Reset Demo
+                </ThemedText>
+              </Pressable>
+            </View>
+          </SettingSection>
+        )}
+        
         {isAdmin && (
           <Button onPress={() => navigation.navigate("AdminSources")}>
             <Icon name="document" size={20} color="white" />
