@@ -165,42 +165,25 @@ npx expo start -c
 
 ## Configuration
 
-Because the project runs through Expo Go, a plain `.env` file will not be picked up during local development. Use one of the two options below.
-
-### Option 1 (recommended): `app.json`
-
-Add an `extra` block inside `"expo"`:
-
-```json
-"extra": {
-  "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY_HERE"
-}
-```
-
-### Option 2: machine environment variable
-
-macOS and Linux:
+The caregiver app reads a root `.env`. That file is separate from `asset-admin/.env`.
 
 ```bash
-export GEMINI_API_KEY=your_key_here
+cp .env.example .env
+```
+
+Set `GEMINI_API_KEY` in `.env`, then start the app:
+
+```bash
 npx expo start
 ```
 
-Windows PowerShell:
+`app.config.js` copies those values into Expo `extra` so the app can read them. Restart Expo after changing `.env`.
 
-```powershell
-$env:GEMINI_API_KEY="your_key_here"
-npx expo start
-```
+Leave `EXPO_PUBLIC_RAG_API_URL` empty to use the bundled knowledge base. When asset-admin is running, set it to that machine's LAN URL, for example `http://192.168.1.20:3000`. Use the same host for `EXPO_PUBLIC_API_URL` if Learn and the video library should load assets from that server.
 
-### Optional: video library
+Optional video library values in the same file: `GOOGLE_SERVICE_ACCOUNT_JSON` and `GOOGLE_DRIVE_VIDEO_FOLDER_ID`.
 
-```bash
-GOOGLE_SERVICE_ACCOUNT_JSON=your_service_account_credentials
-GOOGLE_DRIVE_VIDEO_FOLDER_ID=your_drive_folder_id
-```
-
-> **Never commit real API keys, `MONGO_URI` values, or private service URLs.** See [`docs/chatbot-environment.md`](docs/chatbot-environment.md) for the full secrets checklist.
+> **Never commit `.env`, real API keys, `MONGO_URI` values, or private service URLs.** See [`docs/chatbot-environment.md`](docs/chatbot-environment.md) for the full secrets checklist.
 
 ---
 
@@ -238,7 +221,7 @@ Run the processing script to refresh the on-device index:
 node scripts/process-pdfs.js
 ```
 
-Leaving `RAG_API_URL` empty in `app.json` restricts the app to the bundled JSON with on-device retrieval.
+Leaving `EXPO_PUBLIC_RAG_API_URL` empty in `.env` restricts the app to the bundled JSON with on-device retrieval.
 
 > `PROTOTYPE_RAG_MODE` flags client-side keys. Secrets must move server-side before any production deployment.
 

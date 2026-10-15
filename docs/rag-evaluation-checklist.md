@@ -6,7 +6,7 @@ Run before demos or releases when changing retrieval, prompts, or ingest.
 
 - [ ] `asset-admin` running with `MONGO_URI` and `GEMINI_API_KEY`
 - [ ] At least one asset is **RAG ready** (Browse shows “RAG ready” or `embedding_status: ready`)
-- [ ] Expo `extra.RAG_API_URL` or `EXPO_PUBLIC_RAG_API_URL` points at asset-admin (use LAN IP for a physical device)
+- [ ] Caregiver `.env` `EXPO_PUBLIC_RAG_API_URL` points at asset-admin (use LAN IP for a physical device)
 
 ## Retrieval sanity
 

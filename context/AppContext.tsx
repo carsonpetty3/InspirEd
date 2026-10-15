@@ -34,6 +34,13 @@ export type Message = {
     citations?: Citation[];
 };
 
+export type EducationChat = {
+    id: string;
+    title: string;
+    updatedAt: Date;
+    messages: Message[];
+};
+
 export type Question = {
     id: string;
     text: string;
@@ -126,8 +133,10 @@ type AppContextType = {
     setLearningModules: React.Dispatch<React.SetStateAction<LearningModule[]>>;
     updateModuleProgress: (id: string, progress: number) => void;
     completeModule: (id: string) => void;
-    educationChatMessages: Message[];
-    addEducationChatMessage: (message: Message) => void;
+    educationChats: EducationChat[];
+    startEducationChat: (firstMessage: Message) => string;
+    addEducationChatMessage: (chatId: string, message: Message) => void;
+    renameEducationChat: (chatId: string, title: string) => void;
     videoWatchHistory: VideoWatchRecord[];
     addVideoWatchRecord: (record: VideoWatchRecord) => void;
     getVideoWatchProgress: (videoId: string) => number;
@@ -148,7 +157,8 @@ const STORAGE_KEYS = {
     PRIVACY_CONSENT_DATE: "@InspirEd:privacyConsentDate",
     VIDEO_WATCH_HISTORY: "@InspirEd:videoWatchHistory",
     CACHED_VIDEOS: "@InspirEd:cachedVideos",
-    LEARNING_MODULES: "@InspirEd:learningModules"
+    LEARNING_MODULES: "@InspirEd:learningModules",
+    EDUCATION_CHATS: "@InspirEd:educationChats",
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -165,7 +175,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const [chatMessages, setChatMessages] = useState<{ [visitId: string]: Message[] }>({});
     const [plannerQuestions, setPlannerQuestions] = useState<Question[]>([]);
     const [pdfSources, setPDFSources] = useState<PDFSource[]>([]);
-    const [educationChatMessages, setEducationChatMessages] = useState<Message[]>([]);
+    const [educationChats, setEducationChats] = useState<EducationChat[]>([]);
     const [videoWatchHistory, setVideoWatchHistory] = useState<VideoWatchRecord[]>([]);
     const [cachedVideos, setCachedVideosState] = useState<CachedVideo[]>([]);
     const [learningModules, setLearningModules] = useState<LearningModule[]>([
@@ -445,8 +455,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
     };
 
-    const addEducationChatMessage = (message: Message) => {
-        setEducationChatMessages((prev) => [...prev, message]);
+    const persistEducationChats = (chats: EducationChat[]) => {
+        AsyncStorage.setItem(STORAGE_KEYS.EDUCATION_CHATS, JSON.stringify(chats)).catch(
+            (error) => console.error("Error saving education chats:", error)
+        );
+    };
+
+    const startEducationChat = (firstMessage: Message): string => {
+        const id = Date.now().toString();
+        const trimmed = firstMessage.text.trim();
+        const title = trimmed.length > 40 ? `${trimmed.slice(0, 40)}…` : trimmed || "New chat";
+        const chat: EducationChat = {
+            id,
+            title,
+            updatedAt: new Date(),
+            messages: [firstMessage],
+        };
+        setEducationChats((prev) => {
+            const next = [chat, ...prev];
+            persistEducationChats(next);
+            return next;
+        });
+        return id;
+    };
+
+    const addEducationChatMessage = (chatId: string, message: Message) => {
+        setEducationChats((prev) => {
+            const next = prev.map((chat) =>
+                chat.id === chatId
+                    ? {
+                          ...chat,
+                          messages: [...chat.messages, message],
+                          updatedAt: new Date(),
+                      }
+                    : chat
+            );
+            persistEducationChats(next);
+            return next;
+        });
+    };
+
+    const renameEducationChat = (chatId: string, title: string) => {
+        const nextTitle = title.trim();
+        if (!nextTitle) return;
+        setEducationChats((prev) => {
+            const next = prev.map((chat) =>
+                chat.id === chatId ? { ...chat, title: nextTitle } : chat
+            );
+            persistEducationChats(next);
+            return next;
+        });
     };
 
     const addVideoWatchRecord = (record: VideoWatchRecord) => {
@@ -533,11 +591,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 STORAGE_KEYS.PRIVACY_CONSENT_DATE,
                 STORAGE_KEYS.VIDEO_WATCH_HISTORY,
                 STORAGE_KEYS.CACHED_VIDEOS,
+                STORAGE_KEYS.EDUCATION_CHATS,
             ]);
             setVisits([]);
             setChatMessages({});
             setPlannerQuestions([]);
-            setEducationChatMessages([]);
+            setEducationChats([]);
             setPrivacyConsentState(false);
             setPrivacyConsentDate(null);
             setVideoWatchHistory([]);
@@ -564,7 +623,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         const loadStoredData = async () => {
             try {
-                const [storedOnboarding, storedLevel, storedVisits, storedChatMessages, storedQuestions, storedConsent, storedConsentDate, storedVideoHistory, storedCachedVideos, storedModules] =
+                const [storedOnboarding, storedLevel, storedVisits, storedChatMessages, storedQuestions, storedConsent, storedConsentDate, storedVideoHistory, storedCachedVideos, storedModules, storedEducationChats] =
                     await Promise.all([
                         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETED),
                         AsyncStorage.getItem(STORAGE_KEYS.READING_LEVEL),
@@ -576,6 +635,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                         AsyncStorage.getItem(STORAGE_KEYS.VIDEO_WATCH_HISTORY),
                         AsyncStorage.getItem(STORAGE_KEYS.CACHED_VIDEOS),
                         AsyncStorage.getItem(STORAGE_KEYS.LEARNING_MODULES),
+                        AsyncStorage.getItem(STORAGE_KEYS.EDUCATION_CHATS),
                     ]);
 
                 if (storedOnboarding === "true") {
@@ -641,6 +701,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     setLearningModules(JSON.parse(storedModules));
                 }
 
+                if (storedEducationChats) {
+                    const parsedChats = JSON.parse(storedEducationChats) as EducationChat[];
+                    setEducationChats(
+                        parsedChats.map((chat) => ({
+                            ...chat,
+                            updatedAt: new Date(chat.updatedAt),
+                            messages: (chat.messages || []).map((msg) => ({
+                                ...msg,
+                                timestamp: new Date(msg.timestamp),
+                            })),
+                        }))
+                    );
+                }
+
             } catch (error) {
                 console.error("Error loading stored data:", error);
             } finally {
@@ -690,8 +764,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 setLearningModules,
                 updateModuleProgress,
                 completeModule,
-                educationChatMessages,
+                educationChats,
+                startEducationChat,
                 addEducationChatMessage,
+                renameEducationChat,
                 videoWatchHistory,
                 addVideoWatchRecord,
                 getVideoWatchProgress,

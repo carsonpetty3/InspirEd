@@ -24,6 +24,7 @@ import {
   LearningModule,
   Message,
   Citation,
+  EducationChat,
 } from "@/context/AppContext";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,11 +55,14 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export default function EducationScreen() {
   const { theme } = useTheme();
-    const { learningModules, setLearningModules, educationChatMessages, addEducationChatMessage, readingLevel, toggleModuleComplete } =
+    const { learningModules, setLearningModules, educationChats, startEducationChat, addEducationChatMessage, renameEducationChat, readingLevel, toggleModuleComplete } =
     useAppContext();
   const navigation = useNavigation<any>();
 
   const [showChat, setShowChat] = useState(false);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -121,6 +125,11 @@ export default function EducationScreen() {
     CHAT_INPUT_MIN_HEIGHT,
   );
   const prevComposerLengthRef = useRef(0);
+  const activeChat = educationChats.find((c) => c.id === activeChatId);
+  const activeMessages = activeChat?.messages ?? [];
+  const sortedChats = [...educationChats].sort(
+    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+  );
 
   const handleComposerTextChange = useCallback((text: string) => {
     setInputText(text);
@@ -157,7 +166,7 @@ export default function EducationScreen() {
         ...prev,
         [messageId]: true,
       }));
-      const flatIndex = educationChatMessages.findIndex(
+      const flatIndex = activeMessages.findIndex(
         (m) => m.id === messageId,
       );
       if (flatIndex < 0) return;
@@ -175,7 +184,7 @@ export default function EducationScreen() {
         setTimeout(scrollToMessage, 85);
       });
     },
-    [educationChatMessages],
+    [activeMessages],
   );
 
   const handleAskQuestion = async () => {
@@ -189,19 +198,25 @@ export default function EducationScreen() {
       timestamp: new Date(),
     };
 
-    addEducationChatMessage(userMessage);
-    setInputText("");
-    setComposerInputHeight(CHAT_INPUT_MIN_HEIGHT);
-    prevComposerLengthRef.current = 0;
-    setIsLoading(true);
-
+    const existingChatId = activeChatId;
     const conversationHistory = [
-      ...educationChatMessages.map((msg) => ({
+      ...(existingChatId ? activeMessages : []).map((msg) => ({
         text: msg.text,
         isUser: msg.isUser,
       })),
       { text: questionText, isUser: true },
     ];
+
+    const chatId = existingChatId
+      ? existingChatId
+      : startEducationChat(userMessage);
+    if (!existingChatId) setActiveChatId(chatId);
+    else addEducationChatMessage(chatId, userMessage);
+
+    setInputText("");
+    setComposerInputHeight(CHAT_INPUT_MIN_HEIGHT);
+    prevComposerLengthRef.current = 0;
+    setIsLoading(true);
 
     try {
       const response = await askEducationalQuestion(
@@ -218,10 +233,10 @@ export default function EducationScreen() {
         citations: response.citations,
       };
 
-      addEducationChatMessage(aiMessage);
+      addEducationChatMessage(chatId, aiMessage);
     } catch (e) {
       console.warn("[EducationScreen] askEducationalQuestion failed", e);
-      addEducationChatMessage({
+      addEducationChatMessage(chatId, {
         id: (Date.now() + 1).toString(),
         text: "Something went wrong getting a response. Check your connection and API keys, then try again.",
         isUser: false,
@@ -304,14 +319,21 @@ export default function EducationScreen() {
       >
         <View style={[styles.container, styles.chatMainColumn]}>
           <Pressable
-            onPress={() => setShowChat(false)}
+            onPress={() => {
+              if (activeChatId) {
+                setActiveChatId(null);
+                setRenamingChatId(null);
+                return;
+              }
+              setShowChat(false);
+            }}
             style={styles.backButton}
           >
             <Icon name="chevron-back" size={24} color={theme.primary} />
             <ThemedText
               style={{ color: theme.primary, fontSize: 16, fontWeight: "600" }}
             >
-              Back to Learning
+              {activeChatId ? "All chats" : "Back to Learning"}
             </ThemedText>
           </Pressable>
 
@@ -323,27 +345,123 @@ export default function EducationScreen() {
           >
             <View style={styles.cardHeader}>
               <Icon name="chat" size={24} color={theme.accent} />
-              <ThemedText style={styles.cardTitle}>
-                AI Learning Assistant
-              </ThemedText>
+              {activeChat && renamingChatId === activeChat.id ? (
+                <TextInput
+                  style={[styles.chatRenameInput, { color: theme.text }]}
+                  value={renameDraft}
+                  onChangeText={setRenameDraft}
+                  onBlur={() => {
+                    renameEducationChat(activeChat.id, renameDraft);
+                    setRenamingChatId(null);
+                  }}
+                  onSubmitEditing={() => {
+                    renameEducationChat(activeChat.id, renameDraft);
+                    setRenamingChatId(null);
+                  }}
+                  autoFocus
+                />
+              ) : (
+                <ThemedText style={styles.cardTitle} numberOfLines={1}>
+                  {activeChat?.title ?? "AI Learning Assistant"}
+                </ThemedText>
+              )}
+              {activeChat ? (
+                <Pressable
+                  onPress={() => {
+                    setRenamingChatId(activeChat.id);
+                    setRenameDraft(activeChat.title);
+                  }}
+                >
+                  <ThemedText style={{ color: theme.primary, fontSize: 14 }}>
+                    Rename
+                  </ThemedText>
+                </Pressable>
+              ) : null}
             </View>
-            <ThemedText
-              style={[styles.helperText, { color: theme.textSecondary }]}
-            >
-              Ask questions about pulmonary health, treatments, or any medical
-              term you{"'"}d like explained.
-            </ThemedText>
+            {!activeChatId ? (
+              <ThemedText
+                style={[styles.helperText, { color: theme.textSecondary }]}
+              >
+                Send a message to start a new chat, or open one below.
+              </ThemedText>
+            ) : null}
           </ThemedView>
 
+          {!activeChatId ? (
+            <Animated.FlatList
+              style={styles.chatFlatList}
+              data={sortedChats}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={[
+                styles.chatListContent,
+                {
+                  paddingBottom:
+                    chatComposerDockHeight + CHAT_LIST_GAP_ABOVE_COMPOSER,
+                },
+              ]}
+              ListEmptyComponent={
+                <ThemedText style={[styles.helperText, { color: theme.textSecondary }]}>
+                  No chats yet.
+                </ThemedText>
+              }
+              renderItem={({ item: chat }: ListRenderItemInfo<EducationChat>) => (
+                <Pressable
+                  onPress={() => setActiveChatId(chat.id)}
+                  style={[
+                    styles.savedChatRow,
+                    { backgroundColor: theme.backgroundSecondary },
+                  ]}
+                >
+                  {renamingChatId === chat.id ? (
+                    <TextInput
+                      style={[styles.chatRenameInput, { color: theme.text }]}
+                      value={renameDraft}
+                      onChangeText={setRenameDraft}
+                      onBlur={() => {
+                        renameEducationChat(chat.id, renameDraft);
+                        setRenamingChatId(null);
+                      }}
+                      onSubmitEditing={() => {
+                        renameEducationChat(chat.id, renameDraft);
+                        setRenamingChatId(null);
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <View style={{ flex: 1 }}>
+                      <ThemedText style={styles.savedChatTitle} numberOfLines={1}>
+                        {chat.title}
+                      </ThemedText>
+                      <ThemedText
+                        style={[styles.savedChatMeta, { color: theme.textSecondary }]}
+                      >
+                        {chat.messages.length} messages
+                      </ThemedText>
+                    </View>
+                  )}
+                  <Pressable
+                    onPress={() => {
+                      setRenamingChatId(chat.id);
+                      setRenameDraft(chat.title);
+                    }}
+                  >
+                    <ThemedText style={{ color: theme.primary, fontSize: 13 }}>
+                      Rename
+                    </ThemedText>
+                  </Pressable>
+                </Pressable>
+              )}
+            />
+          ) : (
           <Animated.FlatList
             ref={flatListRef}
             style={styles.chatFlatList}
-            data={educationChatMessages}
+            data={activeMessages}
             keyExtractor={(item) => item.id}
             extraData={{
               activeCitation,
               citationExpandedByMessageId,
-              messageCount: educationChatMessages.length,
+              messageCount: activeMessages.length,
               isLoading,
               chatComposerDockHeight,
             }}
@@ -439,6 +557,7 @@ export default function EducationScreen() {
               }, 150);
             }}
           />
+          )}
 
           <Animated.View
             onLayout={(e) =>
@@ -560,7 +679,7 @@ export default function EducationScreen() {
         })}
         
         <View style={styles.actionButtons}>
-          <Button onPress={() => setShowChat(true)} style={{ flex: 1 }}>
+          <Button onPress={() => { setActiveChatId(null); setShowChat(true); }} style={{ flex: 1 }}>
             <Icon name="chat" size={20} color="white" />
             Ask AI
           </Button>
@@ -1268,6 +1387,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     width: 35,
+  },
+  savedChatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+  },
+  savedChatTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  savedChatMeta: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  chatRenameInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "600",
+    paddingVertical: Spacing.xs,
   },
   backButton: {
     flexDirection: "row",

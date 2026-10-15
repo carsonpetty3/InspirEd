@@ -2,7 +2,12 @@
 
 This document lists what must be configured for the **educational RAG chatbot** (`askEducationalQuestion` in `utils/gemini.ts` → `/api/rag/chat` on **asset-admin** when configured), and what **must not** be committed to a public repository.
 
-For full Mongo/RAG setup steps, see **[rag-mongodb-setup.md](./rag-mongodb-setup.md)**. For asset-admin, copy **`asset-admin/.env.example`** → **`asset-admin/.env`** (gitignored).
+For full Mongo/RAG setup steps, see **[rag-mongodb-setup.md](./rag-mongodb-setup.md)**.
+
+Two env files, kept separate:
+
+- **Caregiver app:** copy **`.env.example`** → **`.env`** at the repo root (gitignored).
+- **Asset library:** copy **`asset-admin/.env.example`** → **`asset-admin/.env`** (gitignored).
 
 ---
 
@@ -12,8 +17,8 @@ For full Mongo/RAG setup steps, see **[rag-mongodb-setup.md](./rag-mongodb-setup
 |------|-----|
 | **`GEMINI_API_KEY`** (real value) | Grants paid API access; treat like a password. |
 | **`MONGO_URI`** | Contains cluster host + credentials. |
-| **`app.json` / `app.config.js` values** with real keys or private LAN URLs | Expo bundles `expo.extra`; keys end up in the client build. |
-| **`asset-admin/.env`** | Should stay local; use `.env.example` as a template only. |
+| **Root `.env`** | Caregiver app secrets. Expo still copies `GEMINI_API_KEY` into the client manifest via `app.config.js`. |
+| **`asset-admin/.env`** | Asset library secrets. Use `.env.example` as a template only. |
 
 Use placeholders in any committed config (e.g. `YOUR_GEMINI_API_KEY_HERE`, `http://YOUR_LAN_IP:3000`). Prefer **EAS Secrets** or CI env vars for production builds.
 
@@ -25,8 +30,9 @@ Used when you open **Learn → Ask AI** and other Gemini-powered flows.
 
 | Variable / config | Source | Purpose |
 |-------------------|--------|---------|
-| **`GEMINI_API_KEY`** | `app.json` → `expo.extra`, or shell `GEMINI_API_KEY` / `EXPO_PUBLIC_GEMINI_API_KEY` (see `app.config.js`) | Required to call Gemini from the app (RAG chat request headers, fallback local RAG embeddings, non-RAG AI features). |
-| **`EXPO_PUBLIC_RAG_API_URL`** or **`RAG_API_URL` in `expo.extra`** | Same | Base URL of **asset-admin** (no trailing slash), e.g. `http://192.168.x.x:3000`. If **unset**, the app falls back to bundled `medical-knowledge.json` + on-device retrieval (no Mongo server). |
+| **`GEMINI_API_KEY`** | Root `.env`. `app.config.js` copies it into `expo.extra`. | Required to call Gemini from the app (RAG chat request headers, fallback local RAG embeddings, non-RAG AI features). |
+| **`EXPO_PUBLIC_RAG_API_URL`** | Root `.env` | Base URL of **asset-admin** (no trailing slash), e.g. `http://192.168.x.x:3000`. If **empty**, the app falls back to bundled `medical-knowledge.json` + on-device retrieval (no Mongo server). |
+| **`EXPO_PUBLIC_API_URL`** | Root `.env` | Base URL for Learn and video-library asset requests. Usually the same host as `EXPO_PUBLIC_RAG_API_URL`. |
 
 **Important:** Any name starting with **`EXPO_PUBLIC_`** is inlined into the client bundle. It is **not** a secret channel—do not put sensitive tokens there. The Gemini key in `expo.extra` is likewise recoverable from the app binary; the README already flags prototype behavior.
 
@@ -49,8 +55,8 @@ The chat route accepts **`x-gemini-api-key`** / **`geminiApiKey`** in the JSON b
 ## Quick checklist
 
 1. **asset-admin:** `.env` with **`MONGO_URI`** + **`GEMINI_API_KEY`**; server running and reachable from the device (LAN URL).
-2. **Expo:** **`GEMINI_API_KEY`** configured (see README).
-3. **Expo:** **`EXPO_PUBLIC_RAG_API_URL`** or **`expo.extra.RAG_API_URL`** set to the asset-admin base URL **if** you use Mongo RAG (omit for JSON-only fallback).
+2. **Caregiver app:** root **`.env`** with **`GEMINI_API_KEY`** (copy from **`.env.example`**).
+3. **Caregiver app:** **`EXPO_PUBLIC_RAG_API_URL`** set to the asset-admin base URL **if** you use Mongo RAG (leave empty for JSON-only fallback).
 
 ---
 

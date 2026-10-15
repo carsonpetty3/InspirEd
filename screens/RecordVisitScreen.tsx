@@ -27,18 +27,17 @@ import {
 } from "expo-audio";
 
 /*
- * Recording and playback use expo-audio (SDK 57), not expo-av.
- *
- * Expo Go on current iPhones only includes SDK 57 native modules. expo-av's
- * ExponentAV module is gone from that client, so importing expo-av crashed the
- * app on launch. We dropped expo-av and mapped the visit flow onto expo-audio:
- *   - pause / resume a recording: pause() then record() on the same recorder
- *   - stop and get the file: stop(), then recorder.uri
- *   - review playback: AudioPlayer play() / pause()
- *
- * Recordings are stored in the app document directory so the system is less
- * likely to delete them from cache.
- */
+
+Recording and playback use expo-audio (SDK 57), not expo-av.
+
+Expo Go on current iPhones only includes SDK 57 native modules. 
+
+expo-av's ExponentAV module is gone from that client, so importing expo-av crashed the app on launch. We dropped expo-av and mapped the visit flow onto expo-audio:
+  - pause / resume a recording: pause() then record() on the same recorder
+  - stop and get the file: stop(), then recorder.uri
+  - review playback: AudioPlayer play() / pause()
+ 
+*/
 
 const RECORDING_OPTIONS = {
   ...RecordingPresets.HIGH_QUALITY,

@@ -86,19 +86,15 @@ From the repo root you can also run **`node scripts/rag-smoke.mjs`** (set **`RAG
 
 1. Same Wi‑Fi as the phone/emulator; use the machine **LAN IP** (not `localhost` on device).
 
-In **`app.json`** → `expo.extra`:
-
-```json
-"RAG_API_URL": "http://YOUR_LAN_IP:3000",
-"PROTOTYPE_RAG_MODE": true
-```
-
-Or:
+In the caregiver app’s root **`.env`** (not `asset-admin/.env`):
 
 ```bash
-export EXPO_PUBLIC_RAG_API_URL=http://YOUR_LAN_IP:3000
-npx expo start
+EXPO_PUBLIC_RAG_API_URL=http://YOUR_LAN_IP:3000
+EXPO_PUBLIC_API_URL=http://YOUR_LAN_IP:3000
+EXPO_PUBLIC_PROTOTYPE_RAG_MODE=true
 ```
+
+Restart Expo after saving. `app.config.js` copies `EXPO_PUBLIC_RAG_API_URL` into `expo.extra.RAG_API_URL`.
 
 **Security note:** `PROTOTYPE_RAG_MODE` documents that API keys and config may stay client-side; replace with proper auth and server-side secrets before production.
 
