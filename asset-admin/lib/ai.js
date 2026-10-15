@@ -7,7 +7,7 @@ const { retrieveChunks, buildContextAndCitations } = require('./ragRetrieve')
 const { searchLegacyKnowledge, buildLegacyContextAndCitations } = require('./legacyKnowledge')
 const { isDbConnected } = require('./db')
 
-const MODEL = 'models/gemini-2.5-flash:generateContent'
+const MODEL = `models/${process.env.GEMINI_MODEL || 'gemini-3.8-flash'}:generateContent`
 /** Above this, audio goes through the Gemini Files API instead of inline base64 (~20 MB request cap). */
 const INLINE_AUDIO_MAX_BYTES = 14 * 1024 * 1024
 
