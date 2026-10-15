@@ -6,7 +6,7 @@
  */
 
 import { Platform } from "react-native";
-import { getApiBaseUrl, resolveApiUrl } from "./api";
+import { resolveApiUrl } from "./api";
 
 export interface Citation {
   id: string;
@@ -17,9 +17,6 @@ export interface Citation {
   sourceFilePath?: string;
   assetMongoId?: string;
 }
-
-/** @deprecated use getApiBaseUrl from ./api */
-export const getRagApiBaseUrl = getApiBaseUrl;
 
 /**
  * Full URL to open a citation source PDF in-app.
