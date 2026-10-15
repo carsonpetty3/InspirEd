@@ -49,3 +49,6 @@ asset-admin/.env
 
 # Vercel CLI project link
 .vercel
+
+# Chat evaluation run output
+eval/results/
