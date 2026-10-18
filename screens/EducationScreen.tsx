@@ -8,6 +8,7 @@ import {
   ListRenderItemInfo,
   Platform,
   Keyboard,
+  Linking,
 } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -37,7 +38,7 @@ import { askEducationalQuestion } from "@/utils/gemini";
 import { SearchBar } from "@/components/SearchBar";
 import { assetToLearningModule } from "@/utils/assetConvertion"
 import { openAssetPDF } from "../utils/openAsset";
-import { buildCitationPdfUrl } from "@/utils/rag";
+import { buildCitationPdfUrl, getRagApiBaseUrl } from "@/utils/rag";
 
 /** Single-line body: compact like typical chat apps (line + minimal vertical padding). */
 const CHAT_INPUT_LINE_HEIGHT = 20;
@@ -54,7 +55,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export default function EducationScreen() {
   const { theme } = useTheme();
-    const { learningModules, setLearningModules, educationChatMessages, addEducationChatMessage, readingLevel, toggleModuleComplete } =
+    const { learningModules, educationChatMessages, addEducationChatMessage, readingLevel, toggleModuleComplete } =
     useAppContext();
   const navigation = useNavigation<any>();
 
@@ -63,8 +64,11 @@ export default function EducationScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [results, setResults] = useState<any[]>([]);
-  const [recommended, setRecommended] = useState<any[]>([]);
-    const [loadingRecommended, setLoadingRecommended] = useState(false);
+  const [lmsModules, setLmsModules] = useState<
+    { module_id: number; lessons: { lesson_id: string; assets: any[] }[] }[]
+  >([]);
+  const [loadingModules, setLoadingModules] = useState(false);
+  const [modulesError, setModulesError] = useState<string | null>(null);
     const moduleMap = new Map(
         learningModules.map((m) => [m.id, m])
     );
@@ -247,49 +251,39 @@ export default function EducationScreen() {
     };
 
 
-    const fetchRecommended = async () => {
+    const fetchLmsModules = async () => {
         try {
-            setLoadingRecommended(true);
+            setLoadingModules(true);
+            setModulesError(null);
 
-            const res = await fetch(
-                process.env.EXPO_PUBLIC_API_URL+"/assets/recommended"
-            );
+            const base = getRagApiBaseUrl();
+            if (!base) {
+                setModulesError("RAG_API_URL is not configured");
+                setLmsModules([]);
+                return;
+            }
+
+            const res = await fetch(`${base}/api/lms/modules`);
+            if (!res.ok) {
+                throw new Error(`Failed to load modules (${res.status})`);
+            }
 
             const data = await res.json();
-
-            const modules = data.map(assetToLearningModule);
-            
-            setLearningModules((prev) => {
-                const existing = new Map(prev.map((m) => [m.id, m]));
-
-                modules.forEach((m: LearningModule) => {
-                    if (!existing.has(m.id)) {
-                        existing.set(m.id, m);
-                    }
-                });
-
-                return Array.from(existing.values());
-            });
-            
-            setRecommended(data);
-
+            setLmsModules(Array.isArray(data) ? data : []);
         } catch (err) {
-            console.error("Error fetching recommended:", err);
+            console.error("Error fetching LMS modules:", err);
+            setModulesError(
+                err instanceof Error ? err.message : "Failed to load modules"
+            );
+            setLmsModules([]);
         } finally {
-            setLoadingRecommended(false);
+            setLoadingModules(false);
         }
     };
 
     useEffect(() => {
-        fetchRecommended();
+        fetchLmsModules();
     }, []);
-
-    const filteredRecommended = recommended.filter((item) => {
-        const base = assetToLearningModule(item);
-        const stored = moduleMap.get(base.id);
-
-        return !(stored?.completed ?? false);
-    }).slice(0, 3);
 
   if (showChat) {
     return (
@@ -524,6 +518,7 @@ export default function EducationScreen() {
   }
 
   return (
+    <>
     <ScreenScrollView>
       <View style={styles.container}>
         <SearchBar
@@ -578,45 +573,113 @@ export default function EducationScreen() {
 
         <View style={styles.categorySection}>
             <ThemedText style={styles.categoryTitle}>
-                Recommended for You
+                Learning Modules
             </ThemedText>
 
-            {loadingRecommended ? (
+            {loadingModules ? (
                 <ThemedText style={{ color: theme.textSecondary }}>
                     Loading...
                 </ThemedText>
-            ) : filteredRecommended.length === 0 ? (
+            ) : modulesError ? (
                 <ThemedText style={{ color: theme.textSecondary }}>
-                    No recommendations yet
+                    {modulesError}
+                </ThemedText>
+            ) : lmsModules.length === 0 ? (
+                <ThemedText style={{ color: theme.textSecondary }}>
+                    No modules yet
                 </ThemedText>
             ) : (
-                filteredRecommended.map((item) => {
-                    const base = assetToLearningModule(item);
-                    const stored = moduleMap.get(base.id);
+                lmsModules.map((mod) => (
+                    <View key={mod.module_id} style={{ marginBottom: Spacing.md }}>
+                        <ThemedText style={{ fontWeight: "700", fontSize: 16, marginBottom: Spacing.xs }}>
+                            Module {mod.module_id}
+                        </ThemedText>
+                        {mod.lessons.map((lesson) => (
+                            <View
+                                key={lesson.lesson_id}
+                                style={{ marginLeft: Spacing.md, marginBottom: Spacing.sm }}
+                            >
+                                <ThemedText
+                                    style={{ color: theme.textSecondary, marginBottom: Spacing.xs }}
+                                >
+                                    Lesson {lesson.lesson_id}
+                                </ThemedText>
+                                {(lesson.assets || []).map((asset, idx) => {
+                                    const path = String(asset.file_path || "").toLowerCase();
+                                    const kind = path.endsWith(".pdf")
+                                        ? "pdf"
+                                        : path.endsWith(".mp4") || path.endsWith(".mov")
+                                          ? "video"
+                                          : "other";
+                                    const label =
+                                        kind === "pdf" ? "PDF" : kind === "video" ? "Video" : null;
 
-                    return (
-                        <ModuleCard
-                            key={base.id}
-                            module={{
-                                ...base,
-                                completed: stored?.completed ?? false,
-                                progress: stored?.progress ?? 0,
-                            }}
-                            onPress={() =>
-                                openAssetPDF(
-                                    item.title,
-                                    process.env.EXPO_PUBLIC_API_URL + item.file_path
-                                )
-                            }
-                            onToggleComplete={toggleModuleComplete}
-                        />
-                    );
-                })
+                                    return (
+                                        <Pressable
+                                            key={`${lesson.lesson_id}-${idx}-${asset.title}`}
+                                            onPress={() => {
+                                                const base = getRagApiBaseUrl();
+                                                if (!base || !asset.file_path) return;
+                                                const url = `${base}${asset.file_path}`;
+                                                if (kind === "pdf") {
+                                                    setPdfModal({
+                                                        uri: url,
+                                                        title: asset.title,
+                                                    });
+                                                } else if (kind === "video") {
+                                                    navigation.navigate("VideoPlayer", {
+                                                        videoId: asset.file_path,
+                                                        title: asset.title,
+                                                        sourceUri: url,
+                                                        sourceType: "url",
+                                                    });
+                                                } else {
+                                                    Linking.openURL(url);
+                                                }
+                                            }}
+                                            style={{
+                                                marginLeft: Spacing.md,
+                                                marginBottom: Spacing.xs,
+                                                flexDirection: "row",
+                                                alignItems: "center",
+                                                gap: Spacing.sm,
+                                            }}
+                                        >
+                                            <ThemedText
+                                                style={{ color: theme.primary, flexShrink: 1 }}
+                                            >
+                                                {asset.title}
+                                            </ThemedText>
+                                            {label ? (
+                                                <ThemedText
+                                                    style={{
+                                                        color: theme.textSecondary,
+                                                        fontSize: 12,
+                                                    }}
+                                                >
+                                                    {label}
+                                                </ThemedText>
+                                            ) : null}
+                                        </Pressable>
+                                    );
+                                })}
+                            </View>
+                        ))}
+                    </View>
+                ))
             )}
         </View>
 
       </View>
     </ScreenScrollView>
+
+    <PdfViewerModal
+      visible={pdfModal !== null}
+      uri={pdfModal?.uri ?? null}
+      title={pdfModal?.title}
+      onClose={() => setPdfModal(null)}
+    />
+    </>
   );
 }
 

@@ -519,6 +519,58 @@ app.get('/api/rag/stats', async (req, res) => {
   }
 })
 
+// ── LMS: assets grouped by module → lesson ────────────────────
+app.get('/api/lms/modules', async (req, res) => {
+  try {
+    const assets = await Asset.find(
+      {},
+      'title content_type file_path module_id lesson_id'
+    ).lean()
+
+    const compareLessonIds = (a, b) => {
+      const pa = String(a).split('.').map(Number)
+      const pb = String(b).split('.').map(Number)
+      const len = Math.max(pa.length, pb.length)
+      for (let i = 0; i < len; i++) {
+        const na = pa[i] ?? 0
+        const nb = pb[i] ?? 0
+        if (na !== nb) return na - nb
+      }
+      return 0
+    }
+
+    const byModule = new Map()
+    for (const asset of assets) {
+      const mid = asset.module_id
+      if (!byModule.has(mid)) byModule.set(mid, new Map())
+      const byLesson = byModule.get(mid)
+      const lid = asset.lesson_id
+      if (!byLesson.has(lid)) byLesson.set(lid, [])
+      byLesson.get(lid).push({
+        title: asset.title,
+        content_type: asset.content_type,
+        file_path: asset.file_path || null
+      })
+    }
+
+    const modules = Array.from(byModule.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([module_id, lessonsMap]) => ({
+        module_id,
+        lessons: Array.from(lessonsMap.entries())
+          .sort(([a], [b]) => compareLessonIds(a, b))
+          .map(([lesson_id, lessonAssets]) => ({
+            lesson_id,
+            assets: lessonAssets
+          }))
+      }))
+
+    res.json(modules)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ── Connect to MongoDB then start server ──────────────────────
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
