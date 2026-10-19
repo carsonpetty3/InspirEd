@@ -12,7 +12,6 @@ import {
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { ScreenScrollView } from "@/components/ScreenScrollView";
-import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { MarkdownText, parseInlineFormatting } from "@/components/MarkdownText";
 import { PdfViewerModal } from "@/components/PdfViewerModal";
@@ -35,27 +34,40 @@ import Animated, {
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import { askEducationalQuestion } from "@/utils/gemini";
 import { SearchBar } from "@/components/SearchBar";
-import { assetToLearningModule } from "@/utils/assetConvertion"
+import { assetToLearningModule } from "@/utils/assetConvertion";
 import { openAssetPDF } from "../utils/openAsset";
 import { buildCitationPdfUrl } from "@/utils/rag";
 
-/** Single-line body: compact like typical chat apps (line + minimal vertical padding). */
 const CHAT_INPUT_LINE_HEIGHT = 20;
 const CHAT_INPUT_MAX_LINES = 9;
 const CHAT_INPUT_PAD_V = Spacing.xs * 2;
 const CHAT_INPUT_MIN_HEIGHT = CHAT_INPUT_LINE_HEIGHT + CHAT_INPUT_PAD_V;
 const CHAT_INPUT_MAX_HEIGHT =
   CHAT_INPUT_LINE_HEIGHT * CHAT_INPUT_MAX_LINES + CHAT_INPUT_PAD_V;
-
-/** Scroll clearance below messages � must live on contentContainerStyle, not FlatList style. */
 const CHAT_LIST_GAP_ABOVE_COMPOSER = Spacing.sm;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
+const EDITORIAL_THEME = {
+  headerBg: "#094E5D",
+  bannerBg: "#F0F7F9",
+  cardBg: "#FFFFFF",
+  borderColor: "#D4E5EA",
+  textDark: "#1C363D",
+  accentTeal: "#0B6476",
+  accentAmber: "#E0A938",
+};
+
 export default function EducationScreen() {
   const { theme } = useTheme();
-    const { learningModules, setLearningModules, educationChatMessages, addEducationChatMessage, readingLevel, toggleModuleComplete } =
-    useAppContext();
+  const {
+    learningModules,
+    setLearningModules,
+    educationChatMessages,
+    addEducationChatMessage,
+    readingLevel,
+    toggleModuleComplete,
+  } = useAppContext();
   const navigation = useNavigation<any>();
 
   const [showChat, setShowChat] = useState(false);
@@ -64,18 +76,8 @@ export default function EducationScreen() {
   const [searchText, setSearchText] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [recommended, setRecommended] = useState<any[]>([]);
-    const [loadingRecommended, setLoadingRecommended] = useState(false);
-    const moduleMap = new Map(
-        learningModules.map((m) => [m.id, m])
-    );
-
-  const completedCount = learningModules.filter((m) => m.completed).length;
-  const totalCount = learningModules.length;
-  const overallProgress = Math.round((completedCount / totalCount) * 100);
-
-  const categories = Array.from(
-    new Set(learningModules.map((m) => m.category)),
-  );
+  const [loadingRecommended, setLoadingRecommended] = useState(false);
+  const moduleMap = new Map(learningModules.map((m) => [m.id, m]));
 
   const flatListRef = useRef<Animated.FlatList<Message>>(null);
   const [pdfModal, setPdfModal] = useState<{
@@ -92,7 +94,6 @@ export default function EducationScreen() {
   const safeInsets = useSafeAreaInsets();
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
 
-  /** Tab-bar inset is huge vs home-indicator-only; applying it while the keyboard is up stacks empty space under the field and looks like a second keyboard. */
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
@@ -157,9 +158,7 @@ export default function EducationScreen() {
         ...prev,
         [messageId]: true,
       }));
-      const flatIndex = educationChatMessages.findIndex(
-        (m) => m.id === messageId,
-      );
+      const flatIndex = educationChatMessages.findIndex((m) => m.id === messageId);
       if (flatIndex < 0) return;
 
       const scrollToMessage = () => {
@@ -232,64 +231,60 @@ export default function EducationScreen() {
     }
   };
 
-    const searchAssets = async (text: string) => {
-        if (!text.trim()) {
-            setResults([]);
-            return;
-        }
-        
-        const res = await fetch(
-            process.env.EXPO_PUBLIC_API_URL +`/assets/search/query?q=${encodeURIComponent(text)}`
-        );
+  const searchAssets = async (text: string) => {
+    if (!text.trim()) {
+      setResults([]);
+      return;
+    }
 
-        const data = await res.json();
-        setResults(data);
-    };
+    const res = await fetch(
+      process.env.EXPO_PUBLIC_API_URL + `/assets/search/query?q=${encodeURIComponent(text)}`,
+    );
 
+    const data = await res.json();
+    setResults(data);
+  };
 
-    const fetchRecommended = async () => {
-        try {
-            setLoadingRecommended(true);
+  const fetchRecommended = async () => {
+    try {
+      setLoadingRecommended(true);
 
-            const res = await fetch(
-                process.env.EXPO_PUBLIC_API_URL+"/assets/recommended"
-            );
+      const res = await fetch(
+        process.env.EXPO_PUBLIC_API_URL + "/assets/recommended",
+      );
 
-            const data = await res.json();
+      const data = await res.json();
+      const modules = data.map(assetToLearningModule);
 
-            const modules = data.map(assetToLearningModule);
-            
-            setLearningModules((prev) => {
-                const existing = new Map(prev.map((m) => [m.id, m]));
+      setLearningModules((prev) => {
+        const existing = new Map(prev.map((m) => [m.id, m]));
+        modules.forEach((m: LearningModule) => {
+          if (!existing.has(m.id)) {
+            existing.set(m.id, m);
+          }
+        });
+        return Array.from(existing.values());
+      });
 
-                modules.forEach((m: LearningModule) => {
-                    if (!existing.has(m.id)) {
-                        existing.set(m.id, m);
-                    }
-                });
+      setRecommended(data);
+    } catch (err) {
+      console.error("Error fetching recommended:", err);
+    } finally {
+      setLoadingRecommended(false);
+    }
+  };
 
-                return Array.from(existing.values());
-            });
-            
-            setRecommended(data);
+  useEffect(() => {
+    fetchRecommended();
+  }, []);
 
-        } catch (err) {
-            console.error("Error fetching recommended:", err);
-        } finally {
-            setLoadingRecommended(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchRecommended();
-    }, []);
-
-    const filteredRecommended = recommended.filter((item) => {
-        const base = assetToLearningModule(item);
-        const stored = moduleMap.get(base.id);
-
-        return !(stored?.completed ?? false);
-    }).slice(0, 3);
+  const filteredRecommended = recommended
+    .filter((item) => {
+      const base = assetToLearningModule(item);
+      const stored = moduleMap.get(base.id);
+      return !(stored?.completed ?? false);
+    })
+    .slice(0, 3);
 
   if (showChat) {
     return (
@@ -298,7 +293,7 @@ export default function EducationScreen() {
           styles.chatRoot,
           {
             paddingTop,
-            backgroundColor: theme.backgroundRoot,
+            backgroundColor: "#F7FAFB",
           },
         ]}
       >
@@ -307,33 +302,23 @@ export default function EducationScreen() {
             onPress={() => setShowChat(false)}
             style={styles.backButton}
           >
-            <Icon name="chevron-back" size={24} color={theme.primary} />
-            <ThemedText
-              style={{ color: theme.primary, fontSize: 16, fontWeight: "600" }}
-            >
-              Back to Learning
+            <Icon name="chevron-back" size={20} color={EDITORIAL_THEME.accentTeal} />
+            <ThemedText style={styles.backButtonText}>
+              Back to Modules
             </ThemedText>
           </Pressable>
 
-          <ThemedView
-            style={[
-              styles.card,
-              { backgroundColor: theme.backgroundSecondary },
-            ]}
-          >
+          <View style={styles.calloutCard}>
             <View style={styles.cardHeader}>
-              <Icon name="chat" size={24} color={theme.accent} />
-              <ThemedText style={styles.cardTitle}>
-                AI Learning Assistant
+              <Icon name="chat" size={20} color={EDITORIAL_THEME.accentTeal} />
+              <ThemedText style={styles.calloutTitle}>
+                Medical Knowledge Assistant
               </ThemedText>
             </View>
-            <ThemedText
-              style={[styles.helperText, { color: theme.textSecondary }]}
-            >
-              Ask questions about pulmonary health, treatments, or any medical
-              term you{"'"}d like explained.
+            <ThemedText style={styles.calloutText}>
+              Ask questions regarding conditions, medical terminology, and referenced clinical guides.
             </ThemedText>
-          </ThemedView>
+          </View>
 
           <Animated.FlatList
             ref={flatListRef}
@@ -356,8 +341,12 @@ export default function EducationScreen() {
                     styles.messageContent,
                     {
                       backgroundColor: msg.isUser
-                        ? theme.primary
-                        : theme.backgroundSecondary,
+                        ? EDITORIAL_THEME.accentTeal
+                        : EDITORIAL_THEME.cardBg,
+                      borderColor: msg.isUser
+                        ? EDITORIAL_THEME.accentTeal
+                        : EDITORIAL_THEME.borderColor,
+                      borderWidth: 1,
                     },
                   ]}
                 >
@@ -375,7 +364,7 @@ export default function EducationScreen() {
                       }
                     />
                   ) : (
-                    <MarkdownText color={theme.text}>{msg.text}</MarkdownText>
+                    <MarkdownText color={EDITORIAL_THEME.textDark}>{msg.text}</MarkdownText>
                   )}
                 </View>
                 {!msg.isUser && msg.citations && msg.citations.length > 0 ? (
@@ -409,11 +398,15 @@ export default function EducationScreen() {
                   <View
                     style={[
                       styles.messageContent,
-                      { backgroundColor: theme.backgroundSecondary },
+                      {
+                        backgroundColor: EDITORIAL_THEME.cardBg,
+                        borderColor: EDITORIAL_THEME.borderColor,
+                        borderWidth: 1,
+                      },
                     ]}
                   >
-                    <ThemedText style={{ color: theme.textSecondary }}>
-                      Thinking...
+                    <ThemedText style={{ color: "#7C96A0", fontStyle: "italic" }}>
+                      Retrieving medical sources...
                     </ThemedText>
                   </View>
                 </View>
@@ -430,14 +423,6 @@ export default function EducationScreen() {
             keyboardDismissMode={
               Platform.OS === "ios" ? "interactive" : "on-drag"
             }
-            onScrollToIndexFailed={({ index }) => {
-              setTimeout(() => {
-                flatListRef.current?.scrollToOffset({
-                  offset: Math.max(0, index * 120),
-                  animated: true,
-                });
-              }, 150);
-            }}
           />
 
           <Animated.View
@@ -447,69 +432,43 @@ export default function EducationScreen() {
             style={[
               styles.chatInputDock,
               {
-                borderTopColor: theme.border,
-                backgroundColor: theme.backgroundRoot,
+                borderTopColor: EDITORIAL_THEME.borderColor,
+                backgroundColor: EDITORIAL_THEME.cardBg,
                 paddingBottom: composerDockBottomInset,
                 paddingHorizontal: Spacing.lg,
               },
               animatedChatInputStyle,
             ]}
           >
-            <ThemedView
-              style={[
-                styles.inputCard,
-                styles.inputCardCompact,
-                { backgroundColor: theme.backgroundSecondary },
-              ]}
-            >
+            <View style={styles.chatComposerContainer}>
               <View style={styles.inputFieldGrow}>
                 <TextInput
                   style={[
                     styles.input,
                     {
-                      color: theme.text,
                       minHeight: composerInputHeight,
                       maxHeight: CHAT_INPUT_MAX_HEIGHT,
                     },
-                    Platform.OS === "android"
-                      ? { includeFontPadding: false }
-                      : null,
                   ]}
                   value={inputText}
                   onChangeText={handleComposerTextChange}
                   placeholder="Ask a question..."
-                  placeholderTextColor={theme.textSecondary}
+                  placeholderTextColor="#7C96A0"
                   multiline
                   maxLength={500}
-                  textAlignVertical="top"
-                  blurOnSubmit={false}
-                  underlineColorAndroid="transparent"
-                  {...(Platform.OS === "ios"
-                    ? ({ submitBehavior: "newline" } as const)
-                    : {})}
-                  scrollEnabled={
-                    composerInputHeight >= CHAT_INPUT_MAX_HEIGHT - 2
-                  }
-                  onContentSizeChange={(e) => {
-                    const h = e.nativeEvent.contentSize.height;
-                    if (!Number.isFinite(h)) return;
-                    if (h > CHAT_INPUT_MAX_HEIGHT + 24) return;
-                    const clamped = Math.min(
-                      Math.max(Math.ceil(h), CHAT_INPUT_MIN_HEIGHT),
-                      CHAT_INPUT_MAX_HEIGHT,
-                    );
-                    setComposerInputHeight(clamped);
-                  }}
                 />
               </View>
-              <Button
+              <Pressable
                 onPress={handleAskQuestion}
                 disabled={!inputText.trim() || isLoading}
-                style={styles.chatSendButton}
+                style={[
+                  styles.sendButton,
+                  (!inputText.trim() || isLoading) && { opacity: 0.5 },
+                ]}
               >
-                <Icon name="send" size={20} color="white" />
-              </Button>
-            </ThemedView>
+                <Icon name="send" size={18} color="#FFFFFF" />
+              </Pressable>
+            </View>
           </Animated.View>
         </View>
 
@@ -524,112 +483,190 @@ export default function EducationScreen() {
   }
 
   return (
-    <ScreenScrollView>
-      <View style={styles.container}>
-        <SearchBar
+    <>
+      <View style={styles.topHeaderBar}>
+        <ThemedText style={styles.topHeaderTitle}>Clinical Learning Library</ThemedText>
+      </View>
+
+      <ScreenScrollView>
+        <View style={styles.container}>
+          <ThemedText style={styles.sectionHeading}>Educational Modules</ThemedText>
+
+          <SearchBar
             value={searchText}
             onChangeText={(t) => {
-                setSearchText(t);
-                searchAssets(t);
+              setSearchText(t);
+              searchAssets(t);
             }}
-            placeholder="Search modules..."
+            placeholder="Search conditions, terms, or topics..."
             onClear={() => {
-                setSearchText("");
-                setResults([]);
+              setSearchText("");
+              setResults([]);
             }}
-        />
+          />
 
-        {results.map((item) => {
+          {results.map((item) => {
             const base = assetToLearningModule(item);
             const stored = moduleMap.get(base.id);
 
             return (
-                <ModuleCard
-                    key={base.id}
-                    module={{
-                        ...base,
-                        completed: stored?.completed ?? false,
-                        progress: stored?.progress ?? 0,
-                    }}
-                    onPress={() =>
-                        openAssetPDF(item.title, process.env.EXPO_PUBLIC_API_URL + item.file_path)
-                    }
-                    onToggleComplete={toggleModuleComplete}
-                />
+              <ModuleCard
+                key={base.id}
+                module={{
+                  ...base,
+                  completed: stored?.completed ?? false,
+                  progress: stored?.progress ?? 0,
+                }}
+                onPress={() =>
+                  openAssetPDF(item.title, process.env.EXPO_PUBLIC_API_URL + item.file_path)
+                }
+                onToggleComplete={toggleModuleComplete}
+              />
             );
-        })}
-        
-        <View style={styles.actionButtons}>
-          <Button onPress={() => setShowChat(true)} style={{ flex: 1 }}>
-            <Icon name="chat" size={20} color="white" />
-            Ask AI
-          </Button>
+          })}
 
-          <Pressable
-            onPress={() => navigation.navigate("VideoLibrary")}
-            style={[styles.exploreButton, { borderColor: theme.primary }]}
-          >
-            <Icon name="videocam" size={18} color={theme.primary} />
-            <ThemedText style={{ color: theme.primary, fontWeight: "600" }}>
-              Explore Videos
-            </ThemedText>
-          </Pressable>
-        </View>
+          <View style={styles.actionButtons}>
+            <Pressable
+              onPress={() => setShowChat(true)}
+              style={styles.actionPrimaryButton}
+            >
+              <Icon name="chat" size={18} color="#FFFFFF" />
+              <ThemedText style={styles.actionPrimaryButtonText}>
+                Ask Medical AI
+              </ThemedText>
+            </Pressable>
 
-        <View style={styles.categorySection}>
-            <ThemedText style={styles.categoryTitle}>
-                Recommended for You
+            <Pressable
+              onPress={() => navigation.navigate("VideoLibrary")}
+              style={styles.actionSecondaryButton}
+            >
+              <Icon name="videocam" size={18} color={EDITORIAL_THEME.accentTeal} />
+              <ThemedText style={styles.actionSecondaryButtonText}>
+                Video Catalog
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          <View style={styles.categorySection}>
+            <ThemedText style={styles.subHeading}>
+              Recommended for Care Journey
             </ThemedText>
 
             {loadingRecommended ? (
-                <ThemedText style={{ color: theme.textSecondary }}>
-                    Loading...
-                </ThemedText>
+              <ThemedText style={{ color: "#7C96A0", fontSize: 13 }}>
+                Loading modules...
+              </ThemedText>
             ) : filteredRecommended.length === 0 ? (
-                <ThemedText style={{ color: theme.textSecondary }}>
-                    No recommendations yet
-                </ThemedText>
+              <ThemedText style={{ color: "#7C96A0", fontSize: 13 }}>
+                All modules currently completed
+              </ThemedText>
             ) : (
-                filteredRecommended.map((item) => {
-                    const base = assetToLearningModule(item);
-                    const stored = moduleMap.get(base.id);
+              filteredRecommended.map((item) => {
+                const base = assetToLearningModule(item);
+                const stored = moduleMap.get(base.id);
 
-                    return (
-                        <ModuleCard
-                            key={base.id}
-                            module={{
-                                ...base,
-                                completed: stored?.completed ?? false,
-                                progress: stored?.progress ?? 0,
-                            }}
-                            onPress={() =>
-                                openAssetPDF(
-                                    item.title,
-                                    process.env.EXPO_PUBLIC_API_URL + item.file_path
-                                )
-                            }
-                            onToggleComplete={toggleModuleComplete}
-                        />
-                    );
-                })
+                return (
+                  <ModuleCard
+                    key={base.id}
+                    module={{
+                      ...base,
+                      completed: stored?.completed ?? false,
+                      progress: stored?.progress ?? 0,
+                    }}
+                    onPress={() =>
+                      openAssetPDF(
+                        item.title,
+                        process.env.EXPO_PUBLIC_API_URL + item.file_path,
+                      )
+                    }
+                    onToggleComplete={toggleModuleComplete}
+                  />
+                );
+              })
             )}
+          </View>
         </View>
-
-      </View>
-    </ScreenScrollView>
+      </ScreenScrollView>
+    </>
   );
 }
 
-function paragraphNeedsBlockMarkdown(p: string): boolean {
-  return /^\s*[-*]\s/m.test(p) || /^\s*\d+[.)]\s/m.test(p);
+function ModuleCard({
+  module,
+  onPress,
+  onToggleComplete,
+}: {
+  module: LearningModule;
+  onPress: () => void;
+  onToggleComplete: (id: string) => void;
+}) {
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={() => {
+        scale.value = withSpring(0.98);
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1);
+      }}
+      style={[animatedStyle, styles.moduleCard]}
+    >
+      <View style={styles.moduleHeader}>
+        <View style={styles.moduleHeaderLeft}>
+          <ThemedText style={styles.moduleTitle}>{module.title}</ThemedText>
+          <ThemedText style={styles.moduleDescription}>
+            {module.description}
+          </ThemedText>
+        </View>
+        {module.completed && (
+          <View style={styles.completedBadge}>
+            <Icon name="check" size={14} color="#FFFFFF" />
+          </View>
+        )}
+      </View>
+
+      <View style={styles.moduleFooter}>
+        <View style={styles.moduleMetadata}>
+          <View style={styles.difficultyBadge}>
+            <ThemedText style={styles.difficultyText}>
+              {module.difficulty}
+            </ThemedText>
+          </View>
+        </View>
+
+        <Pressable
+          onPress={() => onToggleComplete(module.id)}
+          style={[
+            styles.completeButton,
+            module.completed && styles.completeButtonActive,
+          ]}
+        >
+          <Icon
+            name={module.completed ? "checkmark-circle" : "circle"}
+            size={16}
+            color={module.completed ? EDITORIAL_THEME.accentTeal : "#7C96A0"}
+          />
+          <ThemedText
+            style={[
+              styles.completeButtonText,
+              module.completed && { color: EDITORIAL_THEME.accentTeal },
+            ]}
+          >
+            {module.completed ? "Completed" : "Mark as read"}
+          </ThemedText>
+        </Pressable>
+      </View>
+    </AnimatedPressable>
+  );
 }
 
-/** Matches `[1]` or `[1, 2]` (comma-separated indices in one bracket group). */
 const CITATION_BRACKET_SPLIT_RE = /(\[(?:\d+(?:\s*,\s*\d+)*)\])/g;
-
-function paragraphHasCitationBrackets(p: string): boolean {
-  return /\[(?:\d+(?:\s*,\s*\d+)*)\]/.test(p);
-}
 
 function CitationChipText({
   n,
@@ -638,7 +675,7 @@ function CitationChipText({
   onCitationChip,
 }: {
   n: number;
-  theme: { text: string; primary: string; textSecondary: string };
+  theme: any;
   citationCount: number;
   onCitationChip: (n: number) => void;
 }) {
@@ -647,11 +684,11 @@ function CitationChipText({
     <Text
       onPress={valid ? () => onCitationChip(n) : undefined}
       style={{
-        color: valid ? theme.primary : theme.textSecondary,
+        color: valid ? EDITORIAL_THEME.accentTeal : "#7C96A0",
         fontWeight: "700",
-        fontSize: 15,
-        lineHeight: 22,
-        ...(valid ? { textDecorationLine: "underline" as const } : {}),
+        fontSize: 14,
+        lineHeight: 20,
+        textDecorationLine: valid ? "underline" : "none",
       }}
     >
       [{n}]
@@ -661,23 +698,17 @@ function CitationChipText({
 
 function renderInlineCitationChildren(
   segment: string,
-  theme: { text: string; primary: string; textSecondary: string },
+  theme: any,
   citationCount: number,
   onCitationChip: (n: number) => void,
 ): React.ReactNode {
-  const parts = segment
-    .split(CITATION_BRACKET_SPLIT_RE)
-    .filter((x) => x.length > 0);
-  const isBracketToken = (s: string) =>
-    /^\[(?:\d+(?:\s*,\s*\d+)*)\]$/.test(s.trim());
+  const parts = segment.split(CITATION_BRACKET_SPLIT_RE).filter((x) => x.length > 0);
+  const isBracketToken = (s: string) => /^\[(?:\d+(?:\s*,\s*\d+)*)\]$/.test(s.trim());
 
   return parts.map((p, i) => {
     if (isBracketToken(p)) {
       const nums =
-        p
-          .slice(1, -1)
-          .match(/\d+/g)
-          ?.map((x) => parseInt(x, 10)) ?? [];
+        p.slice(1, -1).match(/\d+/g)?.map((x) => parseInt(x, 10)) ?? [];
       return (
         <Text key={i}>
           {nums.flatMap((n, ni) =>
@@ -692,14 +723,7 @@ function renderInlineCitationChildren(
                   />,
                 ]
               : [
-                  <Text
-                    key={`${i}-sep-${ni}`}
-                    style={{
-                      fontSize: 15,
-                      lineHeight: 22,
-                      color: theme.text,
-                    }}
-                  >
+                  <Text key={`${i}-sep-${ni}`} style={{ fontSize: 14, color: EDITORIAL_THEME.textDark }}>
                     ,{" "}
                   </Text>,
                   <CitationChipText
@@ -721,9 +745,9 @@ function renderInlineCitationChildren(
           <Text
             key={j}
             style={[
-              { fontSize: 15, lineHeight: 22, color: theme.text },
-              seg.bold && { fontWeight: "700" as const },
-              seg.italic && { fontStyle: "italic" as const },
+              { fontSize: 14, lineHeight: 20, color: EDITORIAL_THEME.textDark },
+              seg.bold && { fontWeight: "700" },
+              seg.italic && { fontStyle: "italic" },
             ]}
           >
             {seg.text}
@@ -734,90 +758,6 @@ function renderInlineCitationChildren(
   });
 }
 
-function ParagraphInlineCitations({
-  para,
-  theme,
-  citationCount,
-  onCitationChip,
-}: {
-  para: string;
-  theme: { text: string; primary: string; textSecondary: string };
-  citationCount: number;
-  onCitationChip: (n: number) => void;
-}) {
-  return (
-    <Text
-      style={{
-        fontSize: 15,
-        lineHeight: 22,
-        color: theme.text,
-        marginBottom: Spacing.sm,
-      }}
-    >
-      {renderInlineCitationChildren(
-        para,
-        theme,
-        citationCount,
-        onCitationChip,
-      )}
-    </Text>
-  );
-}
-
-const LIST_LINE_PREFIX_RE = /^(\s*(?:[-*]\s+|\d+[.)]\s+))(.*)$/;
-
-function ListParagraphWithCitations({
-  para,
-  theme,
-  citationCount,
-  onCitationChip,
-}: {
-  para: string;
-  theme: { text: string; primary: string; textSecondary: string };
-  citationCount: number;
-  onCitationChip: (n: number) => void;
-}) {
-  const lines = para.split("\n");
-  return (
-    <View style={{ marginBottom: Spacing.sm }}>
-      {lines.map((line, li) => {
-        const m = line.match(LIST_LINE_PREFIX_RE);
-        const prefix = m ? m[1] : "";
-        const body = m ? m[2] : line;
-        return (
-          <Text
-            key={li}
-            style={{
-              fontSize: 15,
-              lineHeight: 22,
-              color: theme.text,
-              marginBottom: li < lines.length - 1 ? Spacing.xs : 0,
-            }}
-          >
-            {prefix ? (
-              <Text
-                style={{
-                  fontSize: 15,
-                  lineHeight: 22,
-                  color: theme.text,
-                }}
-              >
-                {prefix}
-              </Text>
-            ) : null}
-            {renderInlineCitationChildren(
-              body,
-              theme,
-              citationCount,
-              onCitationChip,
-            )}
-          </Text>
-        );
-      })}
-    </View>
-  );
-}
-
 function AssistantMessageWithCitations({
   text,
   citations,
@@ -826,56 +766,17 @@ function AssistantMessageWithCitations({
 }: {
   text: string;
   citations: Citation[];
-  theme: { text: string; primary: string; textSecondary: string };
+  theme: any;
   onCitationChip: (n: number) => void;
 }) {
   const paragraphs = text.split(/\n\n/).filter((p) => p.length > 0);
   return (
     <View>
-      {paragraphs.map((para, i) => {
-        const blockMd = paragraphNeedsBlockMarkdown(para);
-        const hasCit = paragraphHasCitationBrackets(para);
-        const paraGap =
-          i < paragraphs.length - 1 ? { marginBottom: Spacing.sm } : undefined;
-
-        if (blockMd && hasCit) {
-          return (
-            <ListParagraphWithCitations
-              key={i}
-              para={para}
-              theme={theme}
-              citationCount={citations.length}
-              onCitationChip={onCitationChip}
-            />
-          );
-        }
-
-        if (blockMd) {
-          return (
-            <View key={i} style={paraGap}>
-              <MarkdownText color={theme.text}>{para}</MarkdownText>
-            </View>
-          );
-        }
-
-        if (!hasCit) {
-          return (
-            <View key={i} style={paraGap}>
-              <MarkdownText color={theme.text}>{para}</MarkdownText>
-            </View>
-          );
-        }
-
-        return (
-          <ParagraphInlineCitations
-            key={i}
-            para={para}
-            theme={theme}
-            citationCount={citations.length}
-            onCitationChip={onCitationChip}
-          />
-        );
-      })}
+      {paragraphs.map((para, i) => (
+        <Text key={i} style={{ marginBottom: Spacing.xs }}>
+          {renderInlineCitationChildren(para, theme, citations.length, onCitationChip)}
+        </Text>
+      ))}
     </View>
   );
 }
@@ -893,36 +794,27 @@ function CitationSection({
   highlightIndex: number | null;
   onOpenPdf: (citation: Citation) => void;
 }) {
-  const { theme } = useTheme();
-
   if (citations.length === 0) return null;
 
   return (
     <View style={styles.citationContainer}>
       <Pressable
         onPress={() => onExpandedChange(!expanded)}
-        style={[
-          styles.citationHeader,
-          { backgroundColor: theme.primary + "15" },
-        ]}
+        style={styles.citationHeader}
       >
-        <Icon name="document-text" size={14} color={theme.primary} />
-        <ThemedText
-          style={[styles.citationHeaderText, { color: theme.primary }]}
-        >
-          {citations.length} source{citations.length > 1 ? "s" : ""} referenced
+        <Icon name="document-text" size={14} color={EDITORIAL_THEME.accentTeal} />
+        <ThemedText style={styles.citationHeaderText}>
+          {citations.length} source{citations.length > 1 ? "s" : ""} cited
         </ThemedText>
         <Icon
           name={expanded ? "chevron-up" : "chevron-down"}
           size={14}
-          color={theme.primary}
+          color={EDITORIAL_THEME.accentTeal}
         />
       </Pressable>
 
       {expanded ? (
-        <View
-          style={[styles.citationList, { borderColor: theme.primary + "30" }]}
-        >
+        <View style={styles.citationList}>
           {citations.map((citation, index) => {
             const pdfUrl = buildCitationPdfUrl(citation.sourceFilePath);
             const isHighlighted = highlightIndex === index;
@@ -938,49 +830,27 @@ function CitationSection({
                 style={[
                   styles.citationItem,
                   index < citations.length - 1 && {
-                    borderBottomColor: theme.border,
+                    borderBottomColor: EDITORIAL_THEME.borderColor,
                     borderBottomWidth: 1,
                   },
-                  isHighlighted && { backgroundColor: theme.primary + "20" },
+                  isHighlighted && { backgroundColor: "#E6F1F4" },
                 ]}
               >
                 <View style={styles.citationBadge}>
-                  <ThemedText
-                    style={[styles.citationNumber, { color: theme.primary }]}
-                  >
-                    [{index + 1}]
-                  </ThemedText>
+                  <ThemedText style={styles.citationNumber}>[{index + 1}]</ThemedText>
                 </View>
                 <View style={styles.citationContent}>
-                  <ThemedText
-                    style={[styles.citationTitle, { color: theme.text }]}
-                  >
+                  <ThemedText style={styles.citationTitle}>
                     {citation.sourceTitle}
                   </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.citationExcerpt,
-                      { color: theme.textSecondary },
-                    ]}
-                  >
+                  <ThemedText style={styles.citationExcerpt}>
                     {citation.excerpt}
-                  </ThemedText>
-                  <ThemedText
-                    style={[styles.citationRelevance, { color: theme.primary }]}
-                  >
-                    {citation.similarity}% relevance match
                   </ThemedText>
                   {pdfUrl ? (
                     <View style={styles.openPdfHint}>
-                      <Icon name="document" size={14} color={theme.primary} />
-                      <ThemedText
-                        style={{
-                          color: theme.primary,
-                          fontSize: 11,
-                          fontWeight: "600",
-                        }}
-                      >
-                        Tap to open PDF
+                      <Icon name="document" size={12} color={EDITORIAL_THEME.accentTeal} />
+                      <ThemedText style={styles.openPdfHintText}>
+                        Open Source Document
                       </ThemedText>
                     </View>
                   ) : null}
@@ -994,196 +864,82 @@ function CitationSection({
   );
 }
 
-function ModuleCard({ module, onPress, onToggleComplete }: { module: LearningModule; onPress: () => void; onToggleComplete: (id: string) => void; }) {
-  const { theme } = useTheme();
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const getDifficultyColor = (difficulty: string) => {
-    if (difficulty === "Beginner") return theme.success;
-    if (difficulty === "Intermediate") return theme.warning;
-    return theme.error;
-  };
-
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      onPressIn={() => {
-        scale.value = withSpring(0.98);
-      }}
-      onPressOut={() => {
-        scale.value = withSpring(1);
-      }}
-      style={[
-        animatedStyle,
-        styles.moduleCard,
-        {
-          backgroundColor: theme.backgroundSecondary,
-          borderColor: theme.border,
-        },
-      ]}
-    >
-      <View style={styles.moduleHeader}>
-        <View style={styles.moduleHeaderLeft}>
-          <ThemedText style={styles.moduleTitle}>{module.title}</ThemedText>
-          <ThemedText
-            style={[styles.moduleDescription, { color: theme.textSecondary }]}
-          >
-            {module.description}
-          </ThemedText>
-        </View>
-        {module.completed && (
-          <View
-            style={[styles.completedBadge, { backgroundColor: theme.success }]}
-          >
-            <Icon name="check" size={16} color="white" />
-          </View>
-        )}
-      </View>
-
-      <View style={styles.moduleFooter}>
-        <View style={styles.moduleMetadata}>
-          <View
-            style={[
-              styles.difficultyBadge,
-              { backgroundColor: getDifficultyColor(module.difficulty) + "20" },
-            ]}
-          >
-            <ThemedText
-              style={[
-                styles.difficultyText,
-                { color: getDifficultyColor(module.difficulty) },
-              ]}
-            >
-              {module.difficulty}
-            </ThemedText>
-          </View>
-        </View>
-        {module.progress > 0 && !module.completed && (
-          <View style={styles.progressContainer}>
-            <View
-              style={[
-                styles.miniProgressBar,
-                { backgroundColor: theme.backgroundDefault },
-              ]}
-            >
-              <View
-                style={[
-                  styles.miniProgressFill,
-                  {
-                    backgroundColor: theme.primary,
-                    width: `${module.progress}%`,
-                  },
-                ]}
-              />
-            </View>
-            <ThemedText
-              style={[styles.progressText, { color: theme.textSecondary }]}
-            >
-              {module.progress}%
-            </ThemedText>
-          </View>
-        )}
-          </View>
-
-          <View style={styles.completeContainer}>
-              <Pressable
-                  onPress={() => onToggleComplete(module.id)}
-                  style={[
-                      styles.completeButton,
-                      {
-                          borderColor: module.completed ? theme.success : theme.border,
-                          backgroundColor: module.completed ? theme.success + "20" : "transparent",
-                      },
-                  ]}
-              >
-                  <Icon
-                      name={module.completed ? "checkmark-circle" : "circle"}
-                      size={18}
-                      color={module.completed ? theme.success : theme.textSecondary}
-                  />
-                  <ThemedText
-                      style={{
-                          color: module.completed ? theme.success : theme.textSecondary,
-                          fontWeight: "600",
-                      }}
-                  >
-                      {module.completed ? "Completed" : "Mark Complete"}
-                  </ThemedText>
-              </Pressable>
-          </View>
-    </AnimatedPressable>
-  );
-}
-
 const styles = StyleSheet.create({
+  topHeaderBar: {
+    backgroundColor: EDITORIAL_THEME.headerBg,
+    paddingTop: Platform.OS === "ios" ? 54 : 16,
+    paddingBottom: 16,
+    paddingHorizontal: Spacing.lg,
+  },
+  topHeaderTitle: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: 0.2,
+  },
   container: {
     padding: Spacing.lg,
-    gap: Spacing.lg,
+    gap: Spacing.md,
+    backgroundColor: "#F7FAFB",
+  },
+  sectionHeading: {
+    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
+    fontSize: 22,
+    fontWeight: "700",
+    color: EDITORIAL_THEME.accentTeal,
+  },
+  subHeading: {
+    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
+    fontSize: 17,
+    fontWeight: "700",
+    color: EDITORIAL_THEME.textDark,
   },
   actionButtons: {
     flexDirection: "row",
     gap: Spacing.md,
     alignItems: "center",
   },
-  exploreButton: {
+  actionPrimaryButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: Spacing.sm,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    borderWidth: 2,
+    backgroundColor: EDITORIAL_THEME.accentTeal,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.xs,
   },
-  progressCard: {
-    padding: Spacing.xl,
-    borderRadius: BorderRadius.lg,
-    gap: Spacing.md,
+  actionPrimaryButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+    fontSize: 14,
   },
-  progressTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "white",
-  },
-  progressStats: {
+  actionSecondaryButton: {
+    flex: 1,
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
+    justifyContent: "center",
     gap: Spacing.sm,
+    backgroundColor: EDITORIAL_THEME.cardBg,
+    borderColor: EDITORIAL_THEME.borderColor,
+    borderWidth: 1,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.xs,
   },
-  progressNumber: {
-    fontSize: 48,
-    fontWeight: "700",
-    color: "white",
-    lineHeight: 56,
-  },
-  progressLabel: {
-    fontSize: 16,
-    color: "rgba(255,255,255,0.9)",
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 4,
+  actionSecondaryButtonText: {
+    color: EDITORIAL_THEME.accentTeal,
+    fontWeight: "600",
+    fontSize: 14,
   },
   categorySection: {
     gap: Spacing.md,
-  },
-  categoryTitle: {
-    fontSize: 20,
-    fontWeight: "700",
+    marginTop: Spacing.xs,
   },
   moduleCard: {
     padding: Spacing.lg,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: EDITORIAL_THEME.cardBg,
+    borderColor: EDITORIAL_THEME.borderColor,
     borderWidth: 1,
     gap: Spacing.md,
   },
@@ -1194,191 +950,192 @@ const styles = StyleSheet.create({
   },
   moduleHeaderLeft: {
     flex: 1,
-    gap: Spacing.xs,
+    gap: 4,
   },
   moduleTitle: {
+    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
+    color: EDITORIAL_THEME.textDark,
   },
   moduleDescription: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#5C7680",
   },
   completedBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: EDITORIAL_THEME.accentTeal,
     justifyContent: "center",
     alignItems: "center",
   },
   moduleFooter: {
-    gap: Spacing.sm,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "#EDF3F5",
+    paddingTop: Spacing.sm,
   },
   moduleMetadata: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.md,
   },
-    completeContainer: {
-        marginTop: Spacing.sm,
-    },
-
-    completeButton: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: Spacing.sm,
-        paddingVertical: Spacing.sm,
-        paddingHorizontal: Spacing.md,
-        borderRadius: BorderRadius.sm,
-        borderWidth: 1,
-    },
   difficultyBadge: {
     paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
+    paddingVertical: 2,
     borderRadius: BorderRadius.xs,
+    backgroundColor: EDITORIAL_THEME.bannerBg,
+    borderWidth: 1,
+    borderColor: EDITORIAL_THEME.borderColor,
   },
   difficultyText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: EDITORIAL_THEME.accentTeal,
+  },
+  completeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    borderColor: EDITORIAL_THEME.borderColor,
+  },
+  completeButtonActive: {
+    backgroundColor: EDITORIAL_THEME.bannerBg,
+    borderColor: EDITORIAL_THEME.accentTeal,
+  },
+  completeButtonText: {
     fontSize: 12,
     fontWeight: "600",
-  },
-  durationContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-  },
-  durationText: {
-    fontSize: 12,
-  },
-  progressContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-  },
-  miniProgressBar: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  miniProgressFill: {
-    height: "100%",
-    borderRadius: 2,
-  },
-  progressText: {
-    fontSize: 12,
-    fontWeight: "600",
-    width: 35,
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  card: {
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.md,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  helperText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  chatMessages: {
-    gap: Spacing.md,
+    color: "#7C96A0",
   },
   chatRoot: {
     flex: 1,
   },
-  /** Lets FlatList flex fill space between header card and input (otherwise list height is 0). */
   chatMainColumn: {
     flex: 1,
   },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
+  backButtonText: {
+    color: EDITORIAL_THEME.accentTeal,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  calloutCard: {
+    backgroundColor: EDITORIAL_THEME.bannerBg,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.xs,
+    borderLeftWidth: 4,
+    borderLeftColor: EDITORIAL_THEME.accentTeal,
+    borderColor: EDITORIAL_THEME.borderColor,
+    borderWidth: 1,
+    marginBottom: Spacing.sm,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginBottom: 4,
+  },
+  calloutTitle: {
+    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
+    fontSize: 15,
+    fontWeight: "700",
+    color: EDITORIAL_THEME.textDark,
+  },
+  calloutText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#4A626A",
+  },
   chatFlatList: {
     flex: 1,
-  },
-  chatInputDock: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
   chatListContent: {
     gap: Spacing.md,
     flexGrow: 1,
   },
   messageBubble: {
-    maxWidth: "80%",
+    maxWidth: "85%",
   },
   userMessage: {
     alignSelf: "flex-end",
   },
   messageContent: {
     padding: Spacing.md,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.xs,
   },
-  inputCard: {
-    borderRadius: BorderRadius.md,
+  chatInputDock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopWidth: 1,
+  },
+  chatComposerContainer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    width: "100%",
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
   },
-  /** Lets multiline TextInput wrap and grow inside a row (`minWidth: 0` / flex quirk). */
   inputFieldGrow: {
     flex: 1,
     minWidth: 0,
-  },
-  /** Shorter composer bar so less of the thread is obscured. */
-  inputCardCompact: {
-    paddingVertical: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    gap: Spacing.sm,
-  },
-  chatSendButton: {
-    width: 44,
-    height: 44,
-    minHeight: 44,
-    paddingHorizontal: 0,
-    borderRadius: 22,
+    backgroundColor: "#F7FAFB",
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    borderColor: EDITORIAL_THEME.borderColor,
   },
   input: {
     width: "100%",
-    fontSize: 15,
-    lineHeight: CHAT_INPUT_LINE_HEIGHT,
+    fontSize: 14,
     paddingVertical: Spacing.xs,
     paddingHorizontal: Spacing.sm,
+    color: EDITORIAL_THEME.textDark,
+  },
+  sendButton: {
+    backgroundColor: EDITORIAL_THEME.accentTeal,
+    borderRadius: BorderRadius.xs,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   citationContainer: {
-    marginTop: Spacing.sm,
+    marginTop: Spacing.xs,
   },
   citationHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.xs,
-    paddingVertical: Spacing.xs,
+    gap: 4,
+    paddingVertical: 4,
     paddingHorizontal: Spacing.sm,
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: EDITORIAL_THEME.bannerBg,
   },
   citationHeaderText: {
     fontSize: 12,
     fontWeight: "600",
     flex: 1,
+    color: EDITORIAL_THEME.accentTeal,
   },
   citationList: {
-    marginTop: Spacing.xs,
+    marginTop: 4,
     borderWidth: 1,
-    borderRadius: BorderRadius.sm,
-    overflow: "hidden",
+    borderColor: EDITORIAL_THEME.borderColor,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: EDITORIAL_THEME.cardBg,
   },
   citationItem: {
     flexDirection: "row",
@@ -1386,41 +1143,36 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   citationBadge: {
-    width: 24,
+    width: 20,
   },
   citationNumber: {
     fontSize: 12,
     fontWeight: "700",
+    color: EDITORIAL_THEME.accentTeal,
   },
   citationContent: {
     flex: 1,
-    gap: Spacing.xs,
+    gap: 2,
   },
   citationTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
+    color: EDITORIAL_THEME.textDark,
   },
   citationExcerpt: {
     fontSize: 11,
-    lineHeight: 16,
-  },
-  citationRelevance: {
-    fontSize: 10,
-    fontWeight: "500",
+    lineHeight: 15,
+    color: "#5C7680",
   },
   openPdfHint: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: Spacing.xs,
+    gap: 4,
+    marginTop: 4,
   },
-  searchResults: {
-      marginTop: 8,
-      gap: 12, 
+  openPdfHintText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: EDITORIAL_THEME.accentTeal,
   },
-  searchItem: {
-      padding: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: "#eee",
-  }
 });
