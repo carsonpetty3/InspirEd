@@ -38,10 +38,10 @@ jobs:
             echo "::error::A Google API key or private key ended up in the web bundle"
             exit 1
           fi
-      - name: Server loads
+      - name: Server unit tests
         run: |
           npm ci --prefix asset-admin
-          node -e "require('./asset-admin/app')"
+          npm test --prefix asset-admin
 
   deploy:
     needs: check
