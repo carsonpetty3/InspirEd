@@ -42,6 +42,15 @@ API key for full runs; the free tier runs out quickly.
 Optional settings: `EVAL_JUDGE_MODEL` (default `gemini-3.8-flash`) and `EVAL_DELAY_MS`
 (pause between questions, default 6000).
 
+## Tests
+
+```bash
+node --test eval/*.test.js
+```
+
+Checks the question file (100 questions, valid codes), the scoring rules and the report,
+using a fake chat and judge, so no API key is needed. CI runs these on every PR.
+
 ## Known limits
 
 - The judge only sees short excerpts of the cited sources, so it can miss subtle

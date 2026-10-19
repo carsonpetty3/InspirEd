@@ -217,12 +217,15 @@ function report(results, meta) {
   return lines.join('\n') + '\n'
 }
 
-;(async () => {
+/** `--only A,C05` → every question in category A plus question C05. Empty → all. */
+const selectQuestions = (all, only) =>
+  only.length ? all.filter((q) => only.some((o) => q.id === o || (/^[A-G]$/.test(o) && q.id.startsWith(o)))) : all
+
+const loadQuestions = () => parseCsv(fs.readFileSync(path.join(__dirname, 'questions.csv'), 'utf8'))
+
+async function main() {
   if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is missing from asset-admin/.env')
-  const all = parseCsv(fs.readFileSync(path.join(__dirname, 'questions.csv'), 'utf8'))
-  const questions = ONLY.length
-    ? all.filter((q) => ONLY.some((o) => q.id === o || q.id.startsWith(o) && /^[A-G]$/.test(o)))
-    : all
+  const questions = selectQuestions(loadQuestions(), ONLY)
   const meta = { started: new Date().toISOString().slice(0, 16).replace('T', ' '), base: BASE, judge: JUDGE_MODEL }
   console.log(`Running ${questions.length} question(s) against ${BASE}`)
 
@@ -247,7 +250,13 @@ function report(results, meta) {
   fs.writeFileSync(path.join(dir, 'results.json'), JSON.stringify({ meta, results }, null, 2))
   fs.writeFileSync(path.join(dir, 'report.md'), report(results, meta))
   console.log(`\nReport: ${path.relative(process.cwd(), path.join(dir, 'report.md'))}`)
-})().catch((err) => {
-  console.error(err.message)
-  process.exit(1)
-})
+}
+
+module.exports = { parseCsv, expectedSources, selectQuestions, loadQuestions, withRetry, evaluate, report, SOURCE_TITLES, SAFEGUARDS }
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err.message)
+    process.exit(1)
+  })
+}

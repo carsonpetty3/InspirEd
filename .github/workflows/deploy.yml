@@ -42,6 +42,8 @@ jobs:
         run: |
           npm ci --prefix asset-admin
           npm test --prefix asset-admin
+      - name: Chat benchmark unit tests
+        run: node --test eval/*.test.js
 
   deploy:
     needs: check
