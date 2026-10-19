@@ -10,7 +10,6 @@ import {
   Keyboard,
 } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { ScreenScrollView } from "@/components/ScreenScrollView";
 import { Icon } from "@/components/Icon";
 import { MarkdownText, parseInlineFormatting } from "@/components/MarkdownText";
@@ -48,6 +47,7 @@ const CHAT_LIST_GAP_ABOVE_COMPOSER = Spacing.sm;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
+// editorial styling design tokens
 const EDITORIAL_THEME = {
   headerBg: "#094E5D",
   bannerBg: "#F0F7F9",
@@ -96,6 +96,7 @@ export default function EducationScreen() {
 
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
+  // monitor keyboard visibility to manage input docking
   useEffect(() => {
     const showEvent =
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -123,6 +124,7 @@ export default function EducationScreen() {
   );
   const prevComposerLengthRef = useRef(0);
 
+  // dynamically adjust composer height to multi-line input
   const handleComposerTextChange = useCallback((text: string) => {
     setInputText(text);
     if (text.length === 0) {
@@ -143,12 +145,14 @@ export default function EducationScreen() {
     [],
   );
 
+  // clear highlight state after timeout
   useEffect(() => {
     if (!activeCitation) return;
     const t = setTimeout(() => setActiveCitation(null), 4500);
     return () => clearTimeout(t);
   }, [activeCitation]);
 
+  // highlight citation reference and scroll message into view
   const handleCitationChip = useCallback(
     (messageId: string, citationOneBased: number, citationCount: number) => {
       const idx = citationOneBased - 1;
@@ -177,6 +181,7 @@ export default function EducationScreen() {
     [educationChatMessages],
   );
 
+  // send user query to medical knowledge assistant and stream citations
   const handleAskQuestion = async () => {
     if (!inputText.trim() || isLoading) return;
 
@@ -231,6 +236,7 @@ export default function EducationScreen() {
     }
   };
 
+  // query educational assets repository
   const searchAssets = async (text: string) => {
     if (!text.trim()) {
       setResults([]);
@@ -245,6 +251,7 @@ export default function EducationScreen() {
     setResults(data);
   };
 
+  // load personalized learning materials
   const fetchRecommended = async () => {
     try {
       setLoadingRecommended(true);
@@ -278,6 +285,7 @@ export default function EducationScreen() {
     fetchRecommended();
   }, []);
 
+  // filter recommendations to uncompleted modules
   const filteredRecommended = recommended
     .filter((item) => {
       const base = assetToLearningModule(item);
@@ -286,6 +294,7 @@ export default function EducationScreen() {
     })
     .slice(0, 3);
 
+  // full-screen assistant chat interface
   if (showChat) {
     return (
       <View
@@ -298,6 +307,7 @@ export default function EducationScreen() {
         ]}
       >
         <View style={[styles.container, styles.chatMainColumn]}>
+          {/* return to course library view */}
           <Pressable
             onPress={() => setShowChat(false)}
             style={styles.backButton}
@@ -308,6 +318,7 @@ export default function EducationScreen() {
             </ThemedText>
           </Pressable>
 
+          {/* assistant scope guidance */}
           <View style={styles.calloutCard}>
             <View style={styles.cardHeader}>
               <Icon name="chat" size={20} color={EDITORIAL_THEME.accentTeal} />
@@ -320,6 +331,7 @@ export default function EducationScreen() {
             </ThemedText>
           </View>
 
+          {/* interactive message feed */}
           <Animated.FlatList
             ref={flatListRef}
             style={styles.chatFlatList}
@@ -367,6 +379,8 @@ export default function EducationScreen() {
                     <MarkdownText color={EDITORIAL_THEME.textDark}>{msg.text}</MarkdownText>
                   )}
                 </View>
+
+                {/* citation drawer with original source pdf links */}
                 {!msg.isUser && msg.citations && msg.citations.length > 0 ? (
                   <CitationSection
                     citations={msg.citations}
@@ -425,6 +439,7 @@ export default function EducationScreen() {
             }
           />
 
+          {/* query composer bar */}
           <Animated.View
             onLayout={(e) =>
               setChatComposerDockHeight(e.nativeEvent.layout.height)
@@ -472,6 +487,7 @@ export default function EducationScreen() {
           </Animated.View>
         </View>
 
+        {/* modal reader for source documents */}
         <PdfViewerModal
           visible={pdfModal !== null}
           uri={pdfModal?.uri ?? null}
@@ -482,8 +498,10 @@ export default function EducationScreen() {
     );
   }
 
+  // default course library view
   return (
     <>
+      {/* portal title banner */}
       <View style={styles.topHeaderBar}>
         <ThemedText style={styles.topHeaderTitle}>Clinical Learning Library</ThemedText>
       </View>
@@ -492,6 +510,7 @@ export default function EducationScreen() {
         <View style={styles.container}>
           <ThemedText style={styles.sectionHeading}>Educational Modules</ThemedText>
 
+          {/* filter and search library catalog */}
           <SearchBar
             value={searchText}
             onChangeText={(t) => {
@@ -505,6 +524,7 @@ export default function EducationScreen() {
             }}
           />
 
+          {/* display active search results */}
           {results.map((item) => {
             const base = assetToLearningModule(item);
             const stored = moduleMap.get(base.id);
@@ -525,6 +545,7 @@ export default function EducationScreen() {
             );
           })}
 
+          {/* primary action buttons for ai assistant and video archive */}
           <View style={styles.actionButtons}>
             <Pressable
               onPress={() => setShowChat(true)}
@@ -547,6 +568,7 @@ export default function EducationScreen() {
             </Pressable>
           </View>
 
+          {/* curated recommended module track */}
           <View style={styles.categorySection}>
             <ThemedText style={styles.subHeading}>
               Recommended for Care Journey
@@ -591,6 +613,7 @@ export default function EducationScreen() {
   );
 }
 
+// render educational module item with completion toggling
 function ModuleCard({
   module,
   onPress,
@@ -602,6 +625,7 @@ function ModuleCard({
 }) {
   const scale = useSharedValue(1);
 
+  // handle spring press animation
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
@@ -640,6 +664,7 @@ function ModuleCard({
           </View>
         </View>
 
+        {/* update module completion state */}
         <Pressable
           onPress={() => onToggleComplete(module.id)}
           style={[
@@ -668,6 +693,7 @@ function ModuleCard({
 
 const CITATION_BRACKET_SPLIT_RE = /(\[(?:\d+(?:\s*,\s*\d+)*)\])/g;
 
+// parse inline reference brackets into clickable markers
 function CitationChipText({
   n,
   theme,
@@ -696,6 +722,7 @@ function CitationChipText({
   );
 }
 
+// split paragraphs to render inline text alongside interactive citation chips
 function renderInlineCitationChildren(
   segment: string,
   theme: any,
@@ -758,6 +785,7 @@ function renderInlineCitationChildren(
   });
 }
 
+// format response text and bind citation markers
 function AssistantMessageWithCitations({
   text,
   citations,
@@ -781,6 +809,7 @@ function AssistantMessageWithCitations({
   );
 }
 
+// render citation drawer with links to launch full source document view
 function CitationSection({
   citations,
   expanded,
@@ -798,6 +827,7 @@ function CitationSection({
 
   return (
     <View style={styles.citationContainer}>
+      {/* toggle citation drawer display */}
       <Pressable
         onPress={() => onExpandedChange(!expanded)}
         style={styles.citationHeader}
@@ -813,6 +843,7 @@ function CitationSection({
         />
       </Pressable>
 
+      {/* itemized citations */}
       {expanded ? (
         <View style={styles.citationList}>
           {citations.map((citation, index) => {

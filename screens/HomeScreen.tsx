@@ -16,12 +16,13 @@ import Animated, {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
+// editorial styling design tokens
 const EDITORIAL_THEME = {
-  headerBg: "#094E5D",       // Deep clinical teal
-  bannerBg: "#F0F7F9",       // Pale ice blue
+  headerBg: "#094E5D",
+  bannerBg: "#F0F7F9",
   cardBg: "#FFFFFF",
-  borderColor: "#D4E5EA",    // Crisp light blue border
-  textDark: "#1C363D",       // Dark slate
+  borderColor: "#D4E5EA",
+  textDark: "#1C363D",
   accentTeal: "#0B6476",
   accentAmber: "#E0A938",
 };
@@ -31,6 +32,7 @@ export default function HomeScreen() {
   const { userName, visits } = useAppContext();
   const navigation = useNavigation<any>();
 
+  // derive overview stats and recent visit details
   const lastVisit = visits[0];
   const totalVisits = visits.length;
   const totalQuestions = Object.values(useAppContext().chatMessages).reduce(
@@ -38,6 +40,7 @@ export default function HomeScreen() {
     0
   );
 
+  // display rotating supportive prompt for caregivers
   const motivationalQuotes = [
     "Knowledge is power, and you're gaining strength every day.",
     "Every visit is a step forward on your journey.",
@@ -47,13 +50,14 @@ export default function HomeScreen() {
 
   const quote = motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)];
 
+  // navigate to visit audio recorder
   const handleRecordPress = () => {
     navigation.navigate("RecordVisit");
   };
 
   return (
     <>
-      {/* Top Clinical Header Bar */}
+      {/* portal title banner */}
       <View style={styles.topHeaderBar}>
         <ThemedText style={styles.topHeaderTitle}>InspirEd Medical Care Portal</ThemedText>
       </View>
@@ -62,13 +66,16 @@ export default function HomeScreen() {
         <View style={styles.container}>
           <ThemedText style={styles.sectionHeading}>Overview & Progress</ThemedText>
 
+          {/* greeting card with caregiver message */}
           <View style={styles.calloutCard}>
             <ThemedText style={styles.greeting}>Hello, {userName}</ThemedText>
             <ThemedText style={styles.quote}>{quote}</ThemedText>
           </View>
 
+          {/* conditionally render patient records or onboarding empty state */}
           {lastVisit ? (
             <>
+              {/* navigate to details of most recent clinical encounter */}
               <ActionButton
                 icon="document"
                 title="Recent Visit Summary"
@@ -81,6 +88,7 @@ export default function HomeScreen() {
                 }
               />
 
+              {/* display total visits and question metrics */}
               <View style={styles.statsContainer}>
                 <StatCard
                   icon="time"
@@ -98,6 +106,7 @@ export default function HomeScreen() {
                 />
               </View>
 
+              {/* launch chat conversation scoped to previous visit */}
               <ActionButton
                 icon="chat"
                 title="Clinical Assistant"
@@ -112,6 +121,7 @@ export default function HomeScreen() {
                 }}
               />
 
+              {/* open visit checklist and prep builder */}
               <ActionButton
                 icon="calendar"
                 title="Prepare Next Visit"
@@ -120,6 +130,7 @@ export default function HomeScreen() {
               />
             </>
           ) : (
+            // guide first-time users to record their first visit
             <EmptyState onPress={handleRecordPress} />
           )}
         </View>
@@ -128,6 +139,7 @@ export default function HomeScreen() {
   );
 }
 
+// render animated statistic tile
 function StatCard({
   icon,
   value,
@@ -141,6 +153,7 @@ function StatCard({
 }) {
   const scale = useSharedValue(1);
 
+  // handle spring press animation
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
@@ -163,6 +176,7 @@ function StatCard({
   );
 }
 
+// render pressable navigation action row
 function ActionButton({
   icon,
   title,
@@ -176,6 +190,7 @@ function ActionButton({
 }) {
   const scale = useSharedValue(1);
 
+  // handle spring press animation
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
@@ -201,6 +216,7 @@ function ActionButton({
   );
 }
 
+// render placeholder state with single initial recording trigger
 function EmptyState({ onPress }: { onPress: () => void }) {
   return (
     <View style={styles.emptyContainer}>
@@ -217,6 +233,7 @@ function EmptyState({ onPress }: { onPress: () => void }) {
         </ThemedText>
       </View>
 
+      {/* primary trigger to begin initial visit encounter */}
       <Pressable style={styles.primaryActionButton} onPress={onPress}>
         <ThemedText style={styles.primaryActionText}>
           Start: Record Doctor Visit →

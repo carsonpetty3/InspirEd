@@ -1,14 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { View, StyleSheet, TextInput, Pressable, Platform } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { ScreenScrollView } from "@/components/ScreenScrollView";
 import { Icon } from "@/components/Icon";
-import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { useAppContext, Question } from "@/context/AppContext";
 import { suggestPlannerQuestions } from "@/utils/gemini";
 
+// editorial styling design tokens
 const EDITORIAL_THEME = {
   headerBg: "#094E5D",
   bannerBg: "#F0F7F9",
@@ -19,8 +18,16 @@ const EDITORIAL_THEME = {
   accentAmber: "#E0A938",
 };
 
+// default clinical discussion starters
+const DEFAULT_COMMON_QUESTIONS = [
+  "What does this diagnosis mean for my child's future?",
+  "Are there any side effects I should watch for?",
+  "What are the treatment options available?",
+  "How can I help my child at home?",
+  "When should I call if symptoms worsen?",
+];
+
 export default function PlannerScreen() {
-  const { theme } = useTheme();
   const {
     plannerQuestions,
     addPlannerQuestion,
@@ -31,6 +38,17 @@ export default function PlannerScreen() {
   const [newQuestion, setNewQuestion] = useState("");
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
 
+  // exclude prompts that have already been added to active checklist
+  const availableCommonQuestions = useMemo(() => {
+    const activeTexts = new Set(
+      plannerQuestions.map((q) => q.text.trim().toLowerCase())
+    );
+    return DEFAULT_COMMON_QUESTIONS.filter(
+      (text) => !activeTexts.has(text.trim().toLowerCase())
+    );
+  }, [plannerQuestions]);
+
+  // add custom question to checklist
   const handleAddQuestion = () => {
     if (!newQuestion.trim()) return;
 
@@ -44,14 +62,17 @@ export default function PlannerScreen() {
     setNewQuestion("");
   };
 
+  // toggle question completed status
   const handleToggle = (id: string, checked: boolean) => {
     updatePlannerQuestion(id, { checked });
   };
 
+  // remove item from checklist and restore it to available prompts
   const handleDelete = (id: string) => {
     deletePlannerQuestion(id);
   };
 
+  // generate context-aware questions from recorded visits using ai
   const handleSuggestQuestions = async () => {
     setIsLoadingSuggestions(true);
     const suggestions = await suggestPlannerQuestions(visits);
@@ -67,14 +88,7 @@ export default function PlannerScreen() {
     });
   };
 
-  const commonQuestions = [
-    "What does this diagnosis mean for my child's future?",
-    "Are there any side effects I should watch for?",
-    "What are the treatment options available?",
-    "How can I help my child at home?",
-    "When should I call if symptoms worsen?",
-  ];
-
+  // add preset prompt to checklist
   const handleAddCommonQuestion = (text: string) => {
     const question: Question = {
       id: Date.now().toString(),
@@ -86,6 +100,7 @@ export default function PlannerScreen() {
 
   return (
     <>
+      {/* portal title banner */}
       <View style={styles.topHeaderBar}>
         <ThemedText style={styles.topHeaderTitle}>Visit Preparation & Checklist</ThemedText>
       </View>
@@ -94,7 +109,7 @@ export default function PlannerScreen() {
         <View style={styles.container}>
           <ThemedText style={styles.sectionHeading}>Questions to Ask</ThemedText>
 
-          {/* Prompt card */}
+          {/* consultation guidance card */}
           <View style={styles.calloutCard}>
             <ThemedText style={styles.calloutTitle}>Clinical Consultation Prep</ThemedText>
             <ThemedText style={styles.calloutText}>
@@ -102,7 +117,7 @@ export default function PlannerScreen() {
             </ThemedText>
           </View>
 
-          {/* Input Box */}
+          {/* manual question entry field */}
           <View style={styles.inputCard}>
             <TextInput
               style={styles.input}
@@ -125,7 +140,7 @@ export default function PlannerScreen() {
             </Pressable>
           </View>
 
-          {/* AI Suggest Button */}
+          {/* ai suggestion retrieval action */}
           <Pressable
             style={styles.suggestButton}
             onPress={handleSuggestQuestions}
@@ -141,6 +156,7 @@ export default function PlannerScreen() {
             </ThemedText>
           </Pressable>
 
+          {/* user active checklist list */}
           {plannerQuestions.length > 0 && (
             <View style={styles.questionsSection}>
               {plannerQuestions.map((question) => (
@@ -154,33 +170,37 @@ export default function PlannerScreen() {
             </View>
           )}
 
-          <View style={styles.starterSection}>
-            <ThemedText style={styles.subHeading}>
-              {plannerQuestions.length > 0
-                ? "Recommended Question Topics"
-                : "Standard Clinical Prompts"}
-            </ThemedText>
-            <ThemedText style={styles.starterDescription}>
-              Tap any common question below to append it to your checklist:
-            </ThemedText>
+          {/* quick-add suggestions filtered to non-selected items */}
+          {availableCommonQuestions.length > 0 && (
+            <View style={styles.starterSection}>
+              <ThemedText style={styles.subHeading}>
+                {plannerQuestions.length > 0
+                  ? "Recommended Question Topics"
+                  : "Standard Clinical Prompts"}
+              </ThemedText>
+              <ThemedText style={styles.starterDescription}>
+                Tap any common question below to append it to your checklist:
+              </ThemedText>
 
-            {commonQuestions.map((text, index) => (
-              <Pressable
-                key={index}
-                style={styles.starterCard}
-                onPress={() => handleAddCommonQuestion(text)}
-              >
-                <ThemedText style={styles.starterText}>{text}</ThemedText>
-                <Icon name="add-circle" size={20} color={EDITORIAL_THEME.accentTeal} />
-              </Pressable>
-            ))}
-          </View>
+              {availableCommonQuestions.map((text, index) => (
+                <Pressable
+                  key={index}
+                  style={styles.starterCard}
+                  onPress={() => handleAddCommonQuestion(text)}
+                >
+                  <ThemedText style={styles.starterText}>{text}</ThemedText>
+                  <Icon name="add-circle" size={20} color={EDITORIAL_THEME.accentTeal} />
+                </Pressable>
+              ))}
+            </View>
+          )}
         </View>
       </ScreenScrollView>
     </>
   );
 }
 
+// render toggleable checklist row with delete action
 function QuestionItem({
   question,
   onToggle,

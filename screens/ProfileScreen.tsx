@@ -1,12 +1,16 @@
-import React, { useState, useMemo } from "react";
-import { View, StyleSheet, TextInput, Pressable, Platform } from "react-native";
+import React from "react";
+import { StyleSheet, View, TextInput, Pressable, Alert, Platform, Image } from "react-native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { ScreenKeyboardAwareScrollView } from "@/components/ScreenKeyboardAwareScrollView";
 import { ThemedText } from "@/components/ThemedText";
-import { ScreenScrollView } from "@/components/ScreenScrollView";
 import { Icon } from "@/components/Icon";
 import { Spacing, BorderRadius } from "@/constants/theme";
-import { useAppContext, Question } from "@/context/AppContext";
-import { suggestPlannerQuestions } from "@/utils/gemini";
+import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
+import { useAppContext } from "@/context/AppContext";
 
+const InspiredLogo = require("@/assets/images/inspired-logo.png");
+
+// editorial styling design tokens
 const EDITORIAL_THEME = {
   headerBg: "#094E5D",
   bannerBg: "#F0F7F9",
@@ -17,224 +21,290 @@ const EDITORIAL_THEME = {
   accentAmber: "#E0A938",
 };
 
-const DEFAULT_COMMON_QUESTIONS = [
-  "What does this diagnosis mean for my child's future?",
-  "Are there any side effects I should watch for?",
-  "What are the treatment options available?",
-  "How can I help my child at home?",
-  "When should I call if symptoms worsen?",
-];
+type ProfileScreenProps = {
+  navigation: NativeStackNavigationProp<ProfileStackParamList, "Profile">;
+};
 
-export default function PlannerScreen() {
+export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const {
-    plannerQuestions,
-    addPlannerQuestion,
-    updatePlannerQuestion,
-    deletePlannerQuestion,
+    userName,
+    setUserName,
+    recordingQuality,
+    setRecordingQuality,
+    autoSave,
+    setAutoSave,
+    isAdmin,
+    setIsAdmin,
+    readingLevel,
+    resetOnboarding,
+    privacyConsent,
+    privacyConsentDate,
     visits,
+    clearAllData,
   } = useAppContext();
-  const [newQuestion, setNewQuestion] = useState("");
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
 
-  // Filter out any common prompt already present in plannerQuestions (normalized comparison)
-  const availableCommonQuestions = useMemo(() => {
-    const activeTexts = new Set(
-      plannerQuestions.map((q) => q.text.trim().toLowerCase())
-    );
-    return DEFAULT_COMMON_QUESTIONS.filter(
-      (text) => !activeTexts.has(text.trim().toLowerCase())
-    );
-  }, [plannerQuestions]);
-
-  const handleAddQuestion = () => {
-    if (!newQuestion.trim()) return;
-
-    const question: Question = {
-      id: Date.now().toString(),
-      text: newQuestion.trim(),
-      checked: false,
+  // clear stored encounters, chat history, and checklists
+  const handleClearData = () => {
+    const confirmClear = () => {
+      clearAllData();
+      if (Platform.OS === "web") {
+        window.alert("Your data has been cleared.");
+      } else {
+        Alert.alert(
+          "Data Cleared",
+          "All your visit recordings, chat history, and planner questions have been removed."
+        );
+      }
     };
 
-    addPlannerQuestion(question);
-    setNewQuestion("");
+    if (Platform.OS === "web") {
+      if (
+        window.confirm(
+          "Are you sure you want to delete all your data? This includes all visit recordings, chat history, and planner questions. This action cannot be undone."
+        )
+      ) {
+        confirmClear();
+      }
+    } else {
+      Alert.alert(
+        "Clear All Data",
+        "Are you sure you want to delete all your data? This includes all visit recordings, chat history, and planner questions. This action cannot be undone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete Everything", style: "destructive", onPress: confirmClear },
+        ]
+      );
+    }
   };
 
-  const handleToggle = (id: string, checked: boolean) => {
-    updatePlannerQuestion(id, { checked });
-  };
-
-  const handleDelete = (id: string) => {
-    deletePlannerQuestion(id);
-  };
-
-  const handleSuggestQuestions = async () => {
-    setIsLoadingSuggestions(true);
-    const suggestions = await suggestPlannerQuestions(visits);
-    setIsLoadingSuggestions(false);
-
-    suggestions.forEach((text) => {
-      const question: Question = {
-        id: Date.now().toString() + Math.random(),
-        text,
-        checked: false,
-      };
-      addPlannerQuestion(question);
-    });
-  };
-
-  const handleAddCommonQuestion = (text: string) => {
-    const question: Question = {
-      id: Date.now().toString(),
-      text,
-      checked: false,
-    };
-    addPlannerQuestion(question);
+  // map reading level score to display label
+  const getStyleLabel = (level: number): string => {
+    if (level <= 6) return "Essential";
+    if (level <= 8) return "Balanced";
+    if (level <= 10) return "Detailed";
+    return "Comprehensive";
   };
 
   return (
     <>
+      {/* portal title banner */}
       <View style={styles.topHeaderBar}>
-        <ThemedText style={styles.topHeaderTitle}>Visit Preparation & Checklist</ThemedText>
+        <ThemedText style={styles.topHeaderTitle}>Account & Care Settings</ThemedText>
       </View>
 
-      <ScreenScrollView>
+      <ScreenKeyboardAwareScrollView>
         <View style={styles.container}>
-          <ThemedText style={styles.sectionHeading}>Questions to Ask</ThemedText>
+          <ThemedText style={styles.sectionHeading}>User Profile</ThemedText>
 
-          <View style={styles.calloutCard}>
-            <ThemedText style={styles.calloutTitle}>Clinical Consultation Prep</ThemedText>
-            <ThemedText style={styles.calloutText}>
-              Note down concerns beforehand to ensure clear guidance during your next visit.
-            </ThemedText>
+          {/* caregiver identity input */}
+          <View style={styles.inputCard}>
+            <ThemedText style={styles.inputLabel}>Caregiver Name</ThemedText>
+            <TextInput
+              style={styles.nameInput}
+              value={userName}
+              onChangeText={setUserName}
+              placeholder="Your name"
+              placeholderTextColor="#7C96A0"
+            />
           </View>
 
-          <View style={styles.inputCard}>
-            <TextInput
-              style={styles.input}
-              value={newQuestion}
-              onChangeText={setNewQuestion}
-              placeholder="Type your medical query or discussion topic..."
-              placeholderTextColor="#7C96A0"
-              multiline
-              onSubmitEditing={handleAddQuestion}
+          {/* audio capture preferences */}
+          <SettingSection title="Recording Quality">
+            <SettingToggle
+              label="Capture High-Fidelity Audio"
+              value={recordingQuality === "high"}
+              onValueChange={(value) => setRecordingQuality(value ? "high" : "medium")}
             />
+          </SettingSection>
+
+          {/* automatic summary save toggle */}
+          <SettingSection title="Session Persistence">
+            <SettingToggle
+              label="Automatically archive summaries"
+              value={autoSave}
+              onValueChange={setAutoSave}
+            />
+          </SettingSection>
+
+          {/* local storage disclosure and reset actions */}
+          <SettingSection title="Privacy & Local Storage">
+            <View style={styles.privacyCard}>
+              <View style={styles.privacyItem}>
+                <Icon name="home" size={18} color={EDITORIAL_THEME.accentTeal} />
+                <View style={styles.privacyItemText}>
+                  <ThemedText style={styles.privacyItemTitle}>Local-First Storage</ThemedText>
+                  <ThemedText style={styles.privacyItemDescription}>
+                    Clinical encounters and checklists reside locally on your device.
+                  </ThemedText>
+                </View>
+              </View>
+
+              <View style={styles.privacyItem}>
+                <Icon name="sparkles" size={18} color={EDITORIAL_THEME.accentTeal} />
+                <View style={styles.privacyItemText}>
+                  <ThemedText style={styles.privacyItemTitle}>Encrypted AI Summaries</ThemedText>
+                  <ThemedText style={styles.privacyItemDescription}>
+                    Voice recordings are securely processed for medical transcription.
+                  </ThemedText>
+                </View>
+              </View>
+
+              {privacyConsent && privacyConsentDate ? (
+                <View style={styles.privacyItem}>
+                  <Icon name="checkmark-circle" size={18} color={EDITORIAL_THEME.accentTeal} />
+                  <View style={styles.privacyItemText}>
+                    <ThemedText style={styles.privacyItemTitle}>Privacy Acknowledged</ThemedText>
+                    <ThemedText style={styles.privacyItemDescription}>
+                      Verified on {privacyConsentDate.toLocaleDateString()}
+                    </ThemedText>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.dataStats}>
+              <ThemedText style={styles.dataStatsText}>
+                {visits.length} clinical encounter{visits.length !== 1 ? "s" : ""} recorded
+              </ThemedText>
+            </View>
+
+            {/* erase all persistent device data */}
+            <Pressable onPress={handleClearData} style={styles.deleteButton}>
+              <Icon name="trash" size={16} color="#C93B2B" />
+              <ThemedText style={styles.deleteButtonText}>
+                Erase Device Records
+              </ThemedText>
+            </Pressable>
+          </SettingSection>
+
+          {/* reading level re-evaluation entry point */}
+          <SettingSection title="Clinical Communication Style">
+            <View style={styles.readingLevelRow}>
+              <View>
+                <ThemedText style={styles.fieldTitle}>Explanation Depth</ThemedText>
+                <ThemedText style={styles.readingLevelValue}>
+                  {getStyleLabel(readingLevel)}
+                </ThemedText>
+              </View>
+              <Pressable onPress={resetOnboarding} style={styles.redoButton}>
+                <Icon name="refresh" size={14} color={EDITORIAL_THEME.accentTeal} />
+                <ThemedText style={styles.redoButtonText}>
+                  Reconfigure
+                </ThemedText>
+              </Pressable>
+            </View>
+          </SettingSection>
+
+          {/* administrative controls for medical source repositories */}
+          {isAdmin && (
             <Pressable
-              onPress={handleAddQuestion}
-              disabled={!newQuestion.trim()}
+              onPress={() => navigation.navigate("AdminSources")}
+              style={styles.adminActionCard}
+            >
+              <Icon name="document" size={18} color={EDITORIAL_THEME.accentTeal} />
+              <ThemedText style={styles.adminActionCardText}>
+                Manage Trusted Clinical References
+              </ThemedText>
+            </Pressable>
+          )}
+
+          {/* toggle developer and administrative mode */}
+          <View style={styles.adminToggle}>
+            <Pressable
+              onPress={() => setIsAdmin(!isAdmin)}
               style={[
-                styles.addSubmitButton,
-                !newQuestion.trim() && { opacity: 0.5 },
+                styles.adminButton,
+                isAdmin && { backgroundColor: EDITORIAL_THEME.accentTeal },
               ]}
             >
-              <Icon name="add" size={20} color="#FFFFFF" />
+              <Icon
+                name="shield"
+                size={14}
+                color={isAdmin ? "#FFFFFF" : "#7C96A0"}
+              />
+              <ThemedText
+                style={{
+                  color: isAdmin ? "#FFFFFF" : "#5C7680",
+                  fontSize: 12,
+                  fontWeight: "600",
+                }}
+              >
+                {isAdmin ? "Admin Controls Enabled" : "Enable Clinical Admin"}
+              </ThemedText>
             </Pressable>
           </View>
 
-          <Pressable
-            style={styles.suggestButton}
-            onPress={handleSuggestQuestions}
-            disabled={isLoadingSuggestions || visits.length === 0}
-          >
-            <Icon name="sparkles" size={18} color={EDITORIAL_THEME.accentTeal} />
-            <ThemedText style={styles.suggestButtonText}>
-              {isLoadingSuggestions
-                ? "Compiling Suggestions..."
-                : visits.length === 0
-                ? "Suggest Questions (Record a visit first)"
-                : "Suggest Questions from Clinical Notes"}
+          {/* application version and mission display */}
+          <View style={styles.aboutSection}>
+            <Image
+              source={InspiredLogo}
+              style={styles.aboutLogo}
+              resizeMode="contain"
+            />
+            <ThemedText style={styles.version}>Version 1.0.0</ThemedText>
+            <ThemedText style={styles.copyright}>
+              Supporting pediatric respiratory care workflows
             </ThemedText>
-          </Pressable>
-
-          {plannerQuestions.length > 0 && (
-            <View style={styles.questionsSection}>
-              {plannerQuestions.map((question) => (
-                <QuestionItem
-                  key={question.id}
-                  question={question}
-                  onToggle={handleToggle}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </View>
-          )}
-
-          {availableCommonQuestions.length > 0 && (
-            <View style={styles.starterSection}>
-              <ThemedText style={styles.subHeading}>
-                {plannerQuestions.length > 0
-                  ? "Recommended Question Topics"
-                  : "Standard Clinical Prompts"}
-              </ThemedText>
-              <ThemedText style={styles.starterDescription}>
-                Tap any common question below to append it to your checklist:
-              </ThemedText>
-
-              {availableCommonQuestions.map((text, index) => (
-                <Pressable
-                  key={index}
-                  style={styles.starterCard}
-                  onPress={() => handleAddCommonQuestion(text)}
-                >
-                  <ThemedText style={styles.starterText}>{text}</ThemedText>
-                  <Icon name="add-circle" size={20} color={EDITORIAL_THEME.accentTeal} />
-                </Pressable>
-              ))}
-            </View>
-          )}
+          </View>
         </View>
-      </ScreenScrollView>
+      </ScreenKeyboardAwareScrollView>
     </>
   );
 }
 
-function QuestionItem({
-  question,
-  onToggle,
-  onDelete,
+// container component for grouped settings
+function SettingSection({
+  title,
+  children,
 }: {
-  question: Question;
-  onToggle: (id: string, checked: boolean) => void;
-  onDelete: (id: string) => void;
+  title: string;
+  children: React.ReactNode;
 }) {
   return (
-    <View
-      style={[
-        styles.questionCard,
-        question.checked && { opacity: 0.6, backgroundColor: "#EBF1F3" },
-      ]}
+    <View style={styles.settingSection}>
+      <ThemedText style={styles.settingTitle}>{title}</ThemedText>
+      {children}
+    </View>
+  );
+}
+
+// custom toggle switch for boolean preferences
+function SettingToggle({
+  label,
+  value,
+  onValueChange,
+}: {
+  label: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+}) {
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      style={styles.toggleRow}
     >
-      <Pressable
-        onPress={() => onToggle(question.id, !question.checked)}
-        style={styles.questionContent}
+      <ThemedText style={styles.toggleLabel}>{label}</ThemedText>
+      <View
+        style={[
+          styles.toggle,
+          {
+            backgroundColor: value
+              ? EDITORIAL_THEME.accentTeal
+              : "#E5EDF0",
+            borderColor: EDITORIAL_THEME.borderColor,
+          },
+        ]}
       >
         <View
           style={[
-            styles.checkbox,
+            styles.toggleThumb,
             {
-              backgroundColor: question.checked
-                ? EDITORIAL_THEME.accentTeal
-                : "transparent",
-              borderColor: question.checked
-                ? EDITORIAL_THEME.accentTeal
-                : EDITORIAL_THEME.borderColor,
+              transform: [{ translateX: value ? 18 : 0 }],
             },
           ]}
-        >
-          {question.checked && <Icon name="check" size={14} color="#FFFFFF" />}
-        </View>
-        <ThemedText
-          style={[
-            styles.questionText,
-            question.checked && styles.questionTextChecked,
-          ]}
-        >
-          {question.text}
-        </ThemedText>
-      </Pressable>
-      <Pressable onPress={() => onDelete(question.id)} style={styles.deleteButton}>
-        <Icon name="close" size={18} color="#7C96A0" />
-      </Pressable>
-    </View>
+        />
+      </View>
+    </Pressable>
   );
 }
 
@@ -253,7 +323,7 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: Spacing.lg,
-    gap: Spacing.md,
+    gap: Spacing.lg,
     backgroundColor: "#F7FAFB",
   },
   sectionHeading: {
@@ -262,137 +332,197 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: EDITORIAL_THEME.accentTeal,
   },
-  subHeading: {
-    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
-    fontSize: 17,
-    fontWeight: "700",
-    color: EDITORIAL_THEME.textDark,
-  },
-  calloutCard: {
-    backgroundColor: EDITORIAL_THEME.bannerBg,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.xs,
-    borderLeftWidth: 4,
-    borderLeftColor: EDITORIAL_THEME.accentTeal,
-    borderColor: EDITORIAL_THEME.borderColor,
-    borderWidth: 1,
-  },
-  calloutTitle: {
-    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
-    fontSize: 16,
-    fontWeight: "700",
-    color: EDITORIAL_THEME.textDark,
-    marginBottom: 2,
-  },
-  calloutText: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: "#4A626A",
-  },
   inputCard: {
     backgroundColor: EDITORIAL_THEME.cardBg,
     borderColor: EDITORIAL_THEME.borderColor,
     borderWidth: 1,
     borderRadius: BorderRadius.xs,
     padding: Spacing.md,
-    flexDirection: "row",
-    gap: Spacing.sm,
-    alignItems: "flex-end",
   },
-  input: {
-    flex: 1,
-    fontSize: 14,
-    minHeight: 40,
-    maxHeight: 100,
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: EDITORIAL_THEME.accentTeal,
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  nameInput: {
+    fontSize: 16,
+    fontWeight: "600",
     color: EDITORIAL_THEME.textDark,
   },
-  addSubmitButton: {
-    backgroundColor: EDITORIAL_THEME.accentTeal,
-    borderRadius: BorderRadius.xs,
-    padding: 10,
+  settingSection: {
+    gap: Spacing.xs,
+  },
+  settingTitle: {
+    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
+    fontSize: 15,
+    fontWeight: "700",
+    color: EDITORIAL_THEME.textDark,
+  },
+  toggleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    backgroundColor: EDITORIAL_THEME.cardBg,
+    borderColor: EDITORIAL_THEME.borderColor,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    padding: Spacing.md,
+  },
+  toggleLabel: {
+    fontSize: 14,
+    color: EDITORIAL_THEME.textDark,
+  },
+  toggle: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    padding: 2,
     justifyContent: "center",
   },
-  suggestButton: {
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+  },
+  privacyCard: {
+    backgroundColor: EDITORIAL_THEME.cardBg,
+    borderColor: EDITORIAL_THEME.borderColor,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  privacyItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Spacing.md,
+  },
+  privacyItemText: {
+    flex: 1,
+  },
+  privacyItemTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: EDITORIAL_THEME.textDark,
+  },
+  privacyItemDescription: {
+    fontSize: 12,
+    color: "#5C7680",
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  dataStats: {
+    alignItems: "center",
+    marginTop: Spacing.xs,
+  },
+  dataStatsText: {
+    fontSize: 12,
+    color: "#7C96A0",
+  },
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xs,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    borderColor: "#F0C7C4",
+    backgroundColor: "#FDF4F4",
+  },
+  deleteButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#C93B2B",
+  },
+  readingLevelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: EDITORIAL_THEME.cardBg,
+    borderColor: EDITORIAL_THEME.borderColor,
+    borderWidth: 1,
+    borderRadius: BorderRadius.xs,
+    padding: Spacing.md,
+  },
+  fieldTitle: {
+    fontSize: 13,
+    color: "#5C7680",
+  },
+  readingLevelValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: EDITORIAL_THEME.textDark,
+    marginTop: 2,
+  },
+  redoButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    borderColor: EDITORIAL_THEME.borderColor,
+    backgroundColor: EDITORIAL_THEME.bannerBg,
+  },
+  redoButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: EDITORIAL_THEME.accentTeal,
+  },
+  adminActionCard: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: Spacing.sm,
     backgroundColor: EDITORIAL_THEME.cardBg,
     borderColor: EDITORIAL_THEME.accentTeal,
-    borderWidth: 1.5,
-    borderRadius: BorderRadius.xs,
-    paddingVertical: 12,
-  },
-  suggestButtonText: {
-    color: EDITORIAL_THEME.accentTeal,
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  questionsSection: {
-    gap: Spacing.sm,
-    marginTop: Spacing.xs,
-  },
-  questionCard: {
-    backgroundColor: EDITORIAL_THEME.cardBg,
-    borderColor: EDITORIAL_THEME.borderColor,
     borderWidth: 1,
+    paddingVertical: 12,
     borderRadius: BorderRadius.xs,
-    padding: Spacing.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
   },
-  questionContent: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 3,
-    borderWidth: 1.5,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  questionText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-    color: EDITORIAL_THEME.textDark,
-  },
-  questionTextChecked: {
-    textDecorationLine: "line-through",
-    color: "#7C96A0",
-  },
-  deleteButton: {
-    padding: Spacing.xs,
-  },
-  starterSection: {
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-  },
-  starterDescription: {
+  adminActionCardText: {
     fontSize: 13,
-    color: "#5C7680",
+    fontWeight: "600",
+    color: EDITORIAL_THEME.accentTeal,
+  },
+  adminToggle: {
+    alignItems: "center",
+  },
+  adminButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    borderColor: EDITORIAL_THEME.borderColor,
+    backgroundColor: EDITORIAL_THEME.cardBg,
+  },
+  aboutSection: {
+    alignItems: "center",
+    gap: 2,
+    marginTop: Spacing.md,
+    paddingBottom: Spacing.xl,
+  },
+  aboutLogo: {
+    width: 140,
+    height: 60,
     marginBottom: Spacing.xs,
   },
-  starterCard: {
-    backgroundColor: EDITORIAL_THEME.cardBg,
-    borderColor: EDITORIAL_THEME.borderColor,
-    borderWidth: 1,
-    borderRadius: BorderRadius.xs,
-    padding: Spacing.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: Spacing.md,
+  version: {
+    fontSize: 12,
+    color: "#7C96A0",
   },
-  starterText: {
-    flex: 1,
-    fontSize: 14,
-    color: EDITORIAL_THEME.textDark,
+  copyright: {
+    fontSize: 12,
+    textAlign: "center",
+    color: "#7C96A0",
   },
 });
