@@ -60,7 +60,9 @@ export default function EducationScreen() {
   const navigation = useNavigation<any>();
 
   const [showChat, setShowChat] = useState(false);
+  // which ai learning assistant chat is open. null shows the chat list, and sending from there starts a new chat.
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  // rename state: which chat's title is being edited, and the text typed so far.
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [inputText, setInputText] = useState("");
@@ -125,6 +127,7 @@ export default function EducationScreen() {
     CHAT_INPUT_MIN_HEIGHT,
   );
   const prevComposerLengthRef = useRef(0);
+  // the open chat and its messages, plus every saved chat sorted newest first for the chat list.
   const activeChat = educationChats.find((c) => c.id === activeChatId);
   const activeMessages = activeChat?.messages ?? [];
   const sortedChats = [...educationChats].sort(
@@ -187,6 +190,8 @@ export default function EducationScreen() {
     [activeMessages],
   );
 
+  // sends a question in the ai learning assistant and saves the conversation.
+  // the question is saved first, then gemini's answer, so the question isn't lost if the answer fails.
   const handleAskQuestion = async () => {
     if (!inputText.trim() || isLoading) return;
 
@@ -199,6 +204,7 @@ export default function EducationScreen() {
     };
 
     const existingChatId = activeChatId;
+    // gemini only sees this chat's earlier messages. a new chat starts with just the question.
     const conversationHistory = [
       ...(existingChatId ? activeMessages : []).map((msg) => ({
         text: msg.text,
@@ -207,6 +213,8 @@ export default function EducationScreen() {
       { text: questionText, isUser: true },
     ];
 
+    // no chat open: create a new chat with this question and open it.
+    // chat open: add the question to that chat.
     const chatId = existingChatId
       ? existingChatId
       : startEducationChat(userMessage);
@@ -233,6 +241,7 @@ export default function EducationScreen() {
         citations: response.citations,
       };
 
+      // save the answer (with its sources) to the same chat. if the request fails, the catch saves an error reply instead.
       addEducationChatMessage(chatId, aiMessage);
     } catch (e) {
       console.warn("[EducationScreen] askEducationalQuestion failed", e);
@@ -320,6 +329,7 @@ export default function EducationScreen() {
         <View style={[styles.container, styles.chatMainColumn]}>
           <Pressable
             onPress={() => {
+              // back goes from an open chat to the chat list, then from the list back to learn. chats stay saved.
               if (activeChatId) {
                 setActiveChatId(null);
                 setRenamingChatId(null);
@@ -351,6 +361,7 @@ export default function EducationScreen() {
                   value={renameDraft}
                   onChangeText={setRenameDraft}
                   onBlur={() => {
+                    // save the new title when the rename box loses focus or return is pressed.
                     renameEducationChat(activeChat.id, renameDraft);
                     setRenamingChatId(null);
                   }}
@@ -388,6 +399,7 @@ export default function EducationScreen() {
           </ThemedView>
 
           {!activeChatId ? (
+            // list of saved ai learning assistant chats, newest first. tap a row to open it, or rename it.
             <Animated.FlatList
               style={styles.chatFlatList}
               data={sortedChats}
@@ -406,7 +418,7 @@ export default function EducationScreen() {
               }
               renderItem={({ item: chat }: ListRenderItemInfo<EducationChat>) => (
                 <Pressable
-                  onPress={() => setActiveChatId(chat.id)}
+                  onPress={() => setActiveChatId(chat.id)} // open this chat
                   style={[
                     styles.savedChatRow,
                     { backgroundColor: theme.backgroundSecondary },
@@ -679,6 +691,7 @@ export default function EducationScreen() {
         })}
         
         <View style={styles.actionButtons}>
+          {/* ask ai always opens on the chat list, not the last open chat. */}
           <Button onPress={() => { setActiveChatId(null); setShowChat(true); }} style={{ flex: 1 }}>
             <Icon name="chat" size={20} color="white" />
             Ask AI

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Alert } from "react-native";
 
 export type Visit = {
     id: string;
@@ -26,19 +27,21 @@ export type Citation = {
   assetMongoId?: string;
 };
 
+// AILAH-FEATURE: represents one chat message, used by both the visit chat and ai learning assistnat common
 export type Message = {
-    id: string;
-    text: string;
-    isUser: boolean;
-    timestamp: Date;
-    citations?: Citation[];
+    id: string;                 // id of message
+    text: string;               // content of message
+    isUser: boolean;            // identify if message was from AI or user
+    timestamp: Date;            // date of message
+    citations?: Citation[];     // stores list of citations for this message for conveicnce
 };
 
+// AILAH-FEATURE: represnts one ai learning assistant chat history, one saved conversation.
 export type EducationChat = {
-    id: string;
-    title: string;
-    updatedAt: Date;
-    messages: Message[];
+    id: string;                     // id of  chat thread
+    title: string;                  // title of chat thread
+    updatedAt: Date;                // last updated date of chat thread
+    messages: Message[];            // stores messages in order of chat thread
 };
 
 export type Question = {
@@ -133,6 +136,7 @@ type AppContextType = {
     setLearningModules: React.Dispatch<React.SetStateAction<LearningModule[]>>;
     updateModuleProgress: (id: string, progress: number) => void;
     completeModule: (id: string) => void;
+    // the ai learning assistant chat history that screens read and change through useAppContext().
     educationChats: EducationChat[];
     startEducationChat: (firstMessage: Message) => string;
     addEducationChatMessage: (chatId: string, message: Message) => void;
@@ -158,6 +162,9 @@ const STORAGE_KEYS = {
     VIDEO_WATCH_HISTORY: "@InspirEd:videoWatchHistory",
     CACHED_VIDEOS: "@InspirEd:cachedVideos",
     LEARNING_MODULES: "@InspirEd:learningModules",
+
+    // AILAH-FEATURE: the ai learning assitant chat history is saved on-device on the phone
+    // under this asyncstorage key, as one json string
     EDUCATION_CHATS: "@InspirEd:educationChats",
 };
 
@@ -175,6 +182,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const [chatMessages, setChatMessages] = useState<{ [visitId: string]: Message[] }>({});
     const [plannerQuestions, setPlannerQuestions] = useState<Question[]>([]);
     const [pdfSources, setPDFSources] = useState<PDFSource[]>([]);
+    // AILAH-FEATURE: ai learning assistant chats held in memory while the app runs. loaded from the phone at startup.
     const [educationChats, setEducationChats] = useState<EducationChat[]>([]);
     const [videoWatchHistory, setVideoWatchHistory] = useState<VideoWatchRecord[]>([]);
     const [cachedVideos, setCachedVideosState] = useState<CachedVideo[]>([]);
@@ -455,22 +463,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
     };
 
+    // AILAH-FEATURE: saves evert chat thread to the phone to async storage, overwrites preivous copy
+    // saves after each new chat, new message, and rename
     const persistEducationChats = (chats: EducationChat[]) => {
-        AsyncStorage.setItem(STORAGE_KEYS.EDUCATION_CHATS, JSON.stringify(chats)).catch(
-            (error) => console.error("Error saving education chats:", error)
-        );
+        AsyncStorage.setItem(STORAGE_KEYS.EDUCATION_CHATS, JSON.stringify(chats)).catch((error) => {
+            // ERROR-EDGE-CASE-CATCH:  the save can fail, when phone storage is full after a long chat history.
+            // the chat still shows on screen, so warn the caregiver it will be gone after the app closes.
+            console.error("Error saving education chats:", error);
+            Alert.alert(
+                "Chat not saved",
+                "This chat couldn't be saved on your phone and will be lost when the app closes. Try freeing up some storage space."
+            );
+        });
     };
 
+
+    // AILAH-FEATURE: creates a new chat for learning assistant whenever the caregiver sends a FIRST message with not chat open.
     const startEducationChat = (firstMessage: Message): string => {
+        // id of new chat is the cur-date
         const id = Date.now().toString();
         const trimmed = firstMessage.text.trim();
-        const title = trimmed.length > 40 ? `${trimmed.slice(0, 40)}…` : trimmed || "New chat";
+        // the first message sent becomes the title & first message
+        const title = trimmed.length > 40 ? `${trimmed.slice(0, 40)}…` : trimmed || "New chat"; 
+        // create education-chat-obj
         const chat: EducationChat = {
-            id,
-            title,
-            updatedAt: new Date(),
-            messages: [firstMessage],
+            id,                             // set id of new chat
+            title,                          // set title of new chat which is first message
+            updatedAt: new Date(),          // set date of chat creation
+            messages: [firstMessage],       // populate message of chat-obj with the first message that was sent
         };
+        // update state of chat-objs
         setEducationChats((prev) => {
             const next = [chat, ...prev];
             persistEducationChats(next);
@@ -479,8 +501,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return id;
     };
 
+    // AILAH-FEATURE: adds a message to an existing chat either its user question or AI message or error reply.
+    // given the chat-obj-id and message to be added
     const addEducationChatMessage = (chatId: string, message: Message) => {
-        setEducationChats((prev) => {
+        setEducationChats((prev) => {          
+            // for all education-chats find chat with chat-id, and append new message to it
             const next = prev.map((chat) =>
                 chat.id === chatId
                     ? {
@@ -490,18 +515,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       }
                     : chat
             );
+            // actuall save the education-chat-obj to device
             persistEducationChats(next);
             return next;
         });
     };
-
+    
+    // AILAH-FEATURE: reanames an ai learning assistant chat
+    // given chat-obj-id & new-title to set
     const renameEducationChat = (chatId: string, title: string) => {
         const nextTitle = title.trim();
         if (!nextTitle) return;
+        // set the education-chats but find the chat via id and change its title
         setEducationChats((prev) => {
             const next = prev.map((chat) =>
                 chat.id === chatId ? { ...chat, title: nextTitle } : chat
             );
+            // save all chats to device
             persistEducationChats(next);
             return next;
         });
@@ -591,6 +621,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 STORAGE_KEYS.PRIVACY_CONSENT_DATE,
                 STORAGE_KEYS.VIDEO_WATCH_HISTORY,
                 STORAGE_KEYS.CACHED_VIDEOS,
+                // clearing all data also deletes ai learning assistant chat history.
                 STORAGE_KEYS.EDUCATION_CHATS,
             ]);
             setVisits([]);
@@ -700,9 +731,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 if (storedModules) {
                     setLearningModules(JSON.parse(storedModules));
                 }
-
+                
+                // AILAH-FEATURE: loads the saved ai learning assistant chats from the phone at startup.
                 if (storedEducationChats) {
                     const parsedChats = JSON.parse(storedEducationChats) as EducationChat[];
+                    // just set them again
                     setEducationChats(
                         parsedChats.map((chat) => ({
                             ...chat,
