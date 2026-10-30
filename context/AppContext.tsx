@@ -25,6 +25,14 @@ export type Citation = {
   /** Server path e.g. `/uploads/foo.pdf` — join with RAG_API_URL for fetching */
   sourceFilePath?: string;
   assetMongoId?: string;
+  // MULTIMODAL-RETRIEVAL-FEATURE: set when this citation is a picture the chat can show.
+  mediaType?: "image";
+};
+
+// MULTIMODAL-RETRIEVAL-FEATURE: picture chosen for one reply. sourceFilePath points at asset-admin/uploads.
+export type RetrievedImage = {
+  sourceFilePath: string;
+  sourceTitle: string;
 };
 
 // AILAH-FEATURE: represents one chat message, used by both the visit chat and ai learning assistnat common
@@ -34,6 +42,7 @@ export type Message = {
     isUser: boolean;            // identify if message was from AI or user
     timestamp: Date;            // date of message
     citations?: Citation[];     // stores list of citations for this message for conveicnce
+    images?: RetrievedImage[];  // MULTIMODAL-RETRIEVAL-FEATURE: diagrams the assistant decided to show
 };
 
 // AILAH-FEATURE: represnts one ai learning assistant chat history, one saved conversation.

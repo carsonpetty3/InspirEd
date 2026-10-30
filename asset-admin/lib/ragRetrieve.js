@@ -121,20 +121,33 @@ async function buildContextAndCitations(retrievalResults) {
     assetById = new Map(assets.map((a) => [String(a._id), a]))
   }
 
-  const contextParts = retrievalResults.map((r, index) => {
+  // MULTIMODAL-RETRIEVAL-FEATURE: a retrieved asset is displayable when the upload is a pdf or an image.
+  const rows = retrievalResults.map((r) => {
+    const aid = r.chunk.asset ? String(r.chunk.asset) : ''
+    const asset = aid ? assetById.get(aid) : null
+    const fp = asset?.file_path ? String(asset.file_path) : ''
+    return {
+      r,
+      asset,
+      filePath: /\.(pdf|png|jpe?g|gif|webp)$/i.test(fp) ? fp : '',
+      isImage: /\.(png|jpe?g|gif|webp)$/i.test(fp)
+    }
+  })
+
+  const contextParts = rows.map(({ r, isImage }, index) => {
     const label = formatSourceLabel(r.chunk)
-    return `[Source ${index + 1}: ${label}]\nWhen citing this source, use the marker [${index + 1}].\n${r.chunk.text}`
+    // MULTIMODAL-RETRIEVAL-FEATURE: tell the model this source is a picture, so it cites it only when the picture helps.
+    const imageNote = isImage
+      ? `\nThis source is a diagram image the app can display. To show it, put [[image:${index + 1}]] on its own line where the picture should appear.`
+      : ''
+    return `[Source ${index + 1}: ${label}]\nWhen citing this source, use the marker [${index + 1}].${imageNote}\n${r.chunk.text}`
   })
 
   const context = `TRUSTED MEDICAL SOURCES (cite using [1], [2], [3] markers):\n\n${contextParts.join(
     '\n\n---\n\n'
   )}`
 
-  const citations = retrievalResults.map((r) => {
-    const aid = r.chunk.asset ? String(r.chunk.asset) : ''
-    const asset = aid ? assetById.get(aid) : null
-    const fp = asset?.file_path ? String(asset.file_path) : ''
-    const sourceFilePath = /\.pdf$/i.test(fp) ? fp : undefined
+  const citations = rows.map(({ r, asset, filePath, isImage }) => {
     const assetMongoId = asset?._id != null ? String(asset._id) : undefined
 
     const row = {
@@ -145,7 +158,9 @@ async function buildContextAndCitations(retrievalResults) {
         (String(r.chunk.text || '').length > 200 ? '...' : ''),
       similarity: Math.round(r.similarity * 100)
     }
-    if (sourceFilePath) row.sourceFilePath = sourceFilePath
+    if (filePath) row.sourceFilePath = filePath
+    // MULTIMODAL-RETRIEVAL-FEATURE: chat uses this to know the citation is a picture it can show.
+    if (isImage) row.mediaType = 'image'
     if (assetMongoId) row.assetMongoId = assetMongoId
     return row
   })

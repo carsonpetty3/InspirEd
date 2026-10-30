@@ -5,6 +5,7 @@ import {
   Pressable,
   TextInput,
   Text,
+  Image,
   ListRenderItemInfo,
   Platform,
   Keyboard,
@@ -38,7 +39,7 @@ import { askEducationalQuestion } from "@/utils/gemini";
 import { SearchBar } from "@/components/SearchBar";
 import { assetToLearningModule } from "@/utils/assetConvertion"
 import { openAssetPDF } from "../utils/openAsset";
-import { buildCitationPdfUrl } from "@/utils/rag";
+import { buildCitationPdfUrl, buildCitationImageUrl } from "@/utils/rag";
 
 /** Single-line body: compact like typical chat apps (line + minimal vertical padding). */
 const CHAT_INPUT_LINE_HEIGHT = 20;
@@ -239,6 +240,8 @@ export default function EducationScreen() {
         isUser: false,
         timestamp: new Date(),
         citations: response.citations,
+        // MULTIMODAL-RETRIEVAL-FEATURE: saved with the reply so the picture is still there when the chat is reopened.
+        images: response.images,
       };
 
       // save the answer (with its sources) to the same chat. if the request fails, the catch saves an error reply instead.
@@ -495,17 +498,15 @@ export default function EducationScreen() {
                     <ThemedText style={{ color: "white" }}>
                       {msg.text}
                     </ThemedText>
-                  ) : msg.citations && msg.citations.length > 0 ? (
-                    <AssistantMessageWithCitations
+                  ) : (
+                    <AnswerWithInlineImages
                       text={msg.text}
                       citations={msg.citations}
                       theme={theme}
                       onCitationChip={(n) =>
-                        handleCitationChip(msg.id, n, msg.citations!.length)
+                        handleCitationChip(msg.id, n, msg.citations?.length ?? 0)
                       }
                     />
-                  ) : (
-                    <MarkdownText color={theme.text}>{msg.text}</MarkdownText>
                   )}
                 </View>
                 {!msg.isUser && msg.citations && msg.citations.length > 0 ? (
@@ -944,6 +945,86 @@ function ListParagraphWithCitations({
               onCitationChip,
             )}
           </Text>
+        );
+      })}
+    </View>
+  );
+}
+
+const IMAGE_MARKER_RE = /\[\[image:(\d+)\]\]/g;
+
+type AnswerPart =
+  | { type: "text"; value: string }
+  | { type: "image"; n: number };
+
+// MULTIMODAL-RETRIEVAL-FEATURE: [[image:N]] is the spot the model chose for a diagram.
+function splitAnswerParts(text: string): AnswerPart[] {
+  const parts: AnswerPart[] = [];
+  let last = 0;
+  for (const match of text.matchAll(IMAGE_MARKER_RE)) {
+    const index = match.index ?? 0;
+    if (index > last) parts.push({ type: "text", value: text.slice(last, index) });
+    parts.push({ type: "image", n: Number(match[1]) });
+    last = index + match[0].length;
+  }
+  if (last < text.length) parts.push({ type: "text", value: text.slice(last) });
+  return parts.filter((part) => part.type === "image" || part.value.trim().length > 0);
+}
+
+function InlineRetrievedImage({ citation }: { citation?: Citation }) {
+  const uri = buildCitationImageUrl(citation?.sourceFilePath);
+  if (!uri) return null;
+
+  return (
+    <View style={styles.inlineImageWrap}>
+      <Image
+        source={{ uri }}
+        style={styles.inlineImage}
+        resizeMode="contain"
+        accessibilityLabel={citation?.sourceTitle || "Diagram"}
+      />
+      {citation?.sourceTitle ? (
+        <ThemedText style={styles.inlineImageCaption}>{citation.sourceTitle}</ThemedText>
+      ) : null}
+    </View>
+  );
+}
+
+function AnswerWithInlineImages({
+  text,
+  citations,
+  theme,
+  onCitationChip,
+}: {
+  text: string;
+  citations?: Citation[];
+  theme: { text: string; primary: string; textSecondary: string };
+  onCitationChip: (n: number) => void;
+}) {
+  const parts = splitAnswerParts(text);
+  const sources = citations ?? [];
+
+  return (
+    <View>
+      {parts.map((part, index) => {
+        if (part.type === "image") {
+          return <InlineRetrievedImage key={index} citation={sources[part.n - 1]} />;
+        }
+        if (sources.length > 0) {
+          return (
+            <AssistantMessageWithCitations
+              key={index}
+              text={part.value}
+              citations={sources}
+              theme={theme}
+              onCitationChip={onCitationChip}
+            />
+          );
+        }
+        return (
+          <MarkdownText key={index} color={theme.text}>
+            {part.value}
+          </MarkdownText>
         );
       })}
     </View>
@@ -1513,6 +1594,25 @@ const styles = StyleSheet.create({
   },
   citationContainer: {
     marginTop: Spacing.sm,
+  },
+  inlineImageWrap: {
+    marginVertical: Spacing.sm,
+    alignItems: "center",
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 280,
+  },
+  inlineImage: {
+    width: "100%",
+    height: 190,
+    borderRadius: BorderRadius.md,
+    backgroundColor: "#fff",
+  },
+  inlineImageCaption: {
+    marginTop: Spacing.xs,
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: "center",
   },
   citationHeader: {
     flexDirection: "row",

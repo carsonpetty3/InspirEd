@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import * as FileSystem from "expo-file-system/legacy";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
-import { getRAGContext, getRAGContextWithCitations, loadKnowledgeBase, Citation, getRagApiBaseUrl } from "./rag";
+import { getRAGContext, getRAGContextWithCitations, loadKnowledgeBase, Citation, RetrievedImage, getRagApiBaseUrl } from "./rag";
 
 export type { Citation } from "./rag";
 
@@ -465,6 +465,8 @@ Create 3-4 sections covering the main topics. Each section should be informative
 export interface EducationalResponse {
   answer: string;
   citations: Citation[];
+  // MULTIMODAL-RETRIEVAL-FEATURE: diagrams the assistant cited and the chat should show.
+  images: RetrievedImage[];
 }
 
 export async function askEducationalQuestion(
@@ -494,6 +496,7 @@ export async function askEducationalQuestion(
       const data = (await res.json()) as {
         answer?: string;
         citations?: Citation[];
+        images?: RetrievedImage[];
         error?: string;
       };
       if (!res.ok) {
@@ -502,6 +505,8 @@ export async function askEducationalQuestion(
         return {
           answer: data.answer,
           citations: data.citations ?? [],
+          // MULTIMODAL-RETRIEVAL-FEATURE: pictures the server already filtered to ones the answer cited.
+          images: data.images ?? [],
         };
       }
       // Fall through to local RAG + Gemini if chat endpoint fails or returns empty
@@ -547,16 +552,18 @@ Please provide a helpful, educational response with inline citations where appro
       return {
         answer: "I'm sorry, I couldn't generate a response. Please try asking your question again.",
         citations: [],
+        images: [],
       };
     }
 
-    return { answer, citations };
+    return { answer, citations, images: [] };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("Gemini Education error:", errorMessage);
     return {
       answer: "I'm having trouble answering your question right now. Please try again in a moment.",
       citations: [],
+      images: [],
     };
   }
 }

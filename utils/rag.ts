@@ -36,6 +36,14 @@ export interface Citation {
   /** Server path e.g. `/uploads/foo.pdf` — join with RAG_API_URL for fetching */
   sourceFilePath?: string;
   assetMongoId?: string;
+  // MULTIMODAL-RETRIEVAL-FEATURE: set when this citation is a picture the chat can show.
+  mediaType?: "image";
+}
+
+// MULTIMODAL-RETRIEVAL-FEATURE: an image the assistant chose to show. the file stays on asset-admin.
+export interface RetrievedImage {
+  sourceFilePath: string;
+  sourceTitle: string;
 }
 
 export interface RAGContextWithCitations {
@@ -65,15 +73,24 @@ export function getRagApiBaseUrl(): string {
   return String(raw || "").replace(/\/$/, "");
 }
 
-/**
- * Full URL to open a citation source PDF in-app (requires `RAG_API_URL` and `sourceFilePath` from asset-admin).
- */
-export function buildCitationPdfUrl(sourceFilePath?: string): string | null {
-  if (!sourceFilePath || !/\.pdf$/i.test(sourceFilePath.trim())) return null;
+function buildUploadedAssetUrl(sourceFilePath: string | undefined, ext: RegExp): string | null {
+  if (!sourceFilePath || !ext.test(sourceFilePath.trim())) return null;
   const base = getRagApiBaseUrl();
   if (!base) return null;
   const p = sourceFilePath.startsWith("/") ? sourceFilePath : `/${sourceFilePath}`;
   return `${base}${p}`;
+}
+
+/**
+ * Full URL to open a citation source PDF in-app (requires `RAG_API_URL` and `sourceFilePath` from asset-admin).
+ */
+export function buildCitationPdfUrl(sourceFilePath?: string): string | null {
+  return buildUploadedAssetUrl(sourceFilePath, /\.pdf$/i);
+}
+
+// MULTIMODAL-RETRIEVAL-FEATURE: full URL for a diagram stored under asset-admin /uploads.
+export function buildCitationImageUrl(sourceFilePath?: string): string | null {
+  return buildUploadedAssetUrl(sourceFilePath, /\.(png|jpe?g|gif|webp)$/i);
 }
 
 /** When set, retrieval uses asset-admin (Mongo) — see README. */

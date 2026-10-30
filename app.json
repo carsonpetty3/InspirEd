@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "inspired",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.inspired.app"
@@ -16,11 +15,8 @@
       "package": "com.inspired.app",
       "adaptiveIcon": {
         "backgroundColor": "#4DB6AC",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/icon.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -35,6 +31,11 @@
         }
       ],
       "expo-video",
+      "expo-asset",
+      "expo-font",
+      "expo-image",
+      "expo-sharing",
+      "expo-status-bar",
       [
         "expo-splash-screen",
         {
