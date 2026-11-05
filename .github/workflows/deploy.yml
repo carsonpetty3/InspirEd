@@ -38,6 +38,12 @@ jobs:
             echo "::error::A Google API key or private key ended up in the web bundle"
             exit 1
           fi
+          # Key formats change, so also fail if the app calls Gemini directly: only the
+          # server may, which means a key in the bundle is the only way it could work.
+          if grep -rl "generativelanguage.googleapis.com" dist/; then
+            echo "::error::The web bundle calls the Gemini API directly; AI calls must go through the server"
+            exit 1
+          fi
       - name: Server unit tests
         run: |
           npm ci --prefix asset-admin

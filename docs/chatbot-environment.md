@@ -11,6 +11,7 @@ For hosting, see **[deployment.md](./deployment.md)**. For Mongo/RAG setup, see 
 | Item | Why |
 |------|-----|
 | **`GEMINI_API_KEY`** | Grants paid API access; treat like a password. |
+| **`GEMINI_MODEL`** | No | Gemini model for answers, transcription and PDF processing. Default `gemini-3.8-flash` (Google retired `gemini-2.5-flash` for new keys). Set e.g. `gemini-3.1-flash-lite` if the default is overloaded. |
 | **`MONGO_URI`** | Contains cluster host + credentials. |
 | **`GOOGLE_SERVICE_ACCOUNT_JSON`** | Private key for the Drive video folder. |
 | **`ADMIN_PASSWORD`**, **`BLOB_READ_WRITE_TOKEN`** | Access to content admin and file storage. |
