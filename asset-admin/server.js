@@ -8,7 +8,7 @@ const fs       = require('fs')
 const Asset    = require('./models/Asset')
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads')
-fs.mkdirSync(UPLOAD_DIR, { recursive: true })
+if (!process.env.VERCEL) fs.mkdirSync(UPLOAD_DIR, { recursive: true }) // Vercel's filesystem is read-only
 const Chunk    = require('./models/Chunk')
 const { queueIngest } = require('./lib/ragIngest')
 const rateLimit = require('express-rate-limit')
@@ -520,14 +520,19 @@ app.get('/api/rag/stats', async (req, res) => {
 })
 
 // ── Connect to MongoDB then start server ──────────────────────
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log('Connected to MongoDB')
-    console.warn(
-      '[prototype] RAG routes (/api/rag/*) have no user authentication — use only on trusted networks.'
-    )
-    app.listen(process.env.PORT || 3000, () =>
-      console.log(`Server running at http://localhost:${process.env.PORT || 3000}`)
-    )
-  })
-  .catch(err => console.error('Connection error:', err))
+// Only when run directly (npm start). On Vercel, api/index.js loads this app instead.
+if (require.main === module) {
+  mongoose.connect(process.env.MONGO_URI)
+    .then(() => {
+      console.log('Connected to MongoDB')
+      console.warn(
+        '[prototype] RAG routes (/api/rag/*) have no user authentication — use only on trusted networks.'
+      )
+      app.listen(process.env.PORT || 3000, () =>
+        console.log(`Server running at http://localhost:${process.env.PORT || 3000}`)
+      )
+    })
+    .catch(err => console.error('Connection error:', err))
+}
+
+module.exports = app
