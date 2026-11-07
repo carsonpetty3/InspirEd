@@ -48,6 +48,8 @@ type LmsModule = {
 
 /**
  * Flatten LMS module assets into library video rows (mp4/mov only).
+ * loops through the modules/lessons/asset keeps on the .mp4 and .mov
+ * it turns into a video entry so it can be accessible on the Explore Video Section
  */
 export async function fetchDatabaseVideos(): Promise<EducationalVideo[]> {
   const base = getRagApiBaseUrl();

@@ -29,6 +29,11 @@ type VideoPlayerParams = {
   };
 };
 
+/** 
+ * function that decides where the video is coming from (i.e. url, local file, Google Drive)
+ * returns a playable address
+*/  
+
 async function resolveVideoUri(params: VideoPlayerParams["VideoPlayer"]): Promise<string> {
   const sourceType = params.sourceType;
   const sourceUri = (params.sourceUri || params.video?.videoUrl || "").trim();
@@ -57,6 +62,13 @@ async function resolveVideoUri(params: VideoPlayerParams["VideoPlayer"]): Promis
 
   throw new Error("Video source is not available.");
 }
+
+
+/** 
+ * working on this: a new component using expo-video with 
+ * built-in controls and fullscreen turned on
+*/
+
 
 function InlineVideoPlayer({
   uri,
@@ -296,7 +308,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(0,0,0,0.5)",

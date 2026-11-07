@@ -519,7 +519,12 @@ app.get('/api/rag/stats', async (req, res) => {
   }
 })
 
-// ── LMS: assets grouped by module → lesson ────────────────────
+/**
+ * Queries every Asset document, selecting 
+ * only title, content_type, file_path, module_id, and lesson_id
+ * modules are sorted by module_ID AND lesson plans are sorted for custom ID (1.2,1.3)
+ * throws a null or error message if otherwise
+ */
 app.get('/api/lms/modules', async (req, res) => {
   try {
     const assets = await Asset.find(
