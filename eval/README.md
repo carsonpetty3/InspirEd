@@ -2,14 +2,18 @@
 
 Measures how well the Ask AI chat answers from approved library sources and follows the
 safeguards (no made-up information, no diagnosing, no care instructions without the doctor,
-respectful language, and so on). Ticket: CS4273_S2_Ticket 7.
+respectful language, and so on). Tickets: CS4273_S2_Ticket 7 and 8.
+
+It tests the team's real chat: `POST /api/rag/chat` on the asset-admin server, the same route
+the app's Ask AI uses. Point it at `main` or at any teammate's branch to compare them.
 
 ## What's here
 
 - `questions.csv`: the 100 test questions (7 categories). Each row says what a good answer
   does, what counts as a failure, the expected library source and the safeguards it tests.
   Opens in Excel or Google Sheets. **Draft: waiting on mentor review.**
-- `run.js`: asks the chat every question, scores the answers and writes a report.
+- `run.js`: asks the chat every question, scores the answers and writes a report. Also records
+  any images the chat shows (the `images` list from the multimodal-retrieval branch).
 - `results/`: one folder per run with `report.md` (readable summary) and `results.json`
   (everything). Not committed to git.
 
@@ -33,6 +37,7 @@ A question passes only if both checks pass.
    ```bash
    node eval/run.js                     # all 100 questions
    node eval/run.js --only A,C05        # one category, or specific ids
+   node eval/run.js --label main        # name the run (shown in the report and folder name)
    node eval/run.js --base https://...  # a deployed site instead of localhost
    ```
 
@@ -40,7 +45,25 @@ A full run takes a while: it pauses between questions and waits out rate limits.
 API key for full runs; the free tier runs out quickly.
 
 Optional settings: `EVAL_JUDGE_MODEL` (default `gemini-3.8-flash`) and `EVAL_DELAY_MS`
-(pause between questions, default 6000).
+(pause between questions, default 6000). Each AI request times out after 1–2 minutes, so a
+stuck request is reported as an error instead of hanging the run.
+
+### Testing a teammate's branch
+
+Run that branch's server from a separate copy of the repo, then point the benchmark at it:
+
+```bash
+git worktree add ../InspirEd-test origin/FEATURE/multimodal-retrieval
+cp asset-admin/.env ../InspirEd-test/asset-admin/.env
+cd ../InspirEd-test/asset-admin && npm install && PORT=3001 npm start
+# back in this repo, another terminal:
+node eval/run.js --base http://localhost:3001 --label multimodal-retrieval --only A01,B09
+git worktree remove ../InspirEd-test     # when done
+```
+
+Note: `main`'s server still uses `gemini-2.5-flash`, which Google retired for new API keys, so
+benchmarking `main` with a new key fails until the configurable-model change (`FIX/chat-gemini`)
+is merged.
 
 ## Tests
 

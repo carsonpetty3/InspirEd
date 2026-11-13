@@ -2,13 +2,15 @@
 /**
  * Chat evaluation benchmark (CS4273_S2_Ticket 7).
  *
- * Asks the Ask AI chat every question in eval/questions.csv through the same server
- * route the app uses, checks which sources it cited, has an AI judge check each answer
- * against the safeguards, and writes a report to eval/results/<timestamp>/.
+ * Asks the team's Ask AI chat (POST /api/rag/chat on the asset-admin server, the route
+ * the app uses) every question in eval/questions.csv, checks which sources it cited, has
+ * an AI judge check each answer against the safeguards, and writes a report to
+ * eval/results/<timestamp>[-label]/.
  *
- *   node eval/run.js                       # all questions, local server
- *   node eval/run.js --only A,C05          # a category or specific ids
- *   node eval/run.js --base https://...    # a deployed site instead
+ *   node eval/run.js                                  # all questions, local server
+ *   node eval/run.js --only A,C05                     # a category or specific ids
+ *   node eval/run.js --label multimodal-retrieval     # name the run (e.g. the branch tested)
+ *   node eval/run.js --base https://...               # a deployed site instead
  *
  * Needs the asset-admin server running (cd asset-admin && npm start) and
  * GEMINI_API_KEY in asset-admin/.env (used for the judge).
@@ -25,6 +27,10 @@ const arg = (name, fallback) => {
 }
 const BASE = arg('base', 'http://localhost:3000').replace(/\/$/, '')
 const ONLY = arg('only', '').split(',').map((s) => s.trim()).filter(Boolean)
+const LABEL = arg('label', '')
+const CHAT_ROUTE = '/api/rag/chat'
+const CHAT_TIMEOUT_MS = 120000 // a hung AI request becomes an error instead of an endless wait
+const JUDGE_TIMEOUT_MS = 90000
 const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL || 'gemini-3.8-flash'
 const DELAY_MS = Number(process.env.EVAL_DELAY_MS || 6000) // stay under free-tier rate limits
 const READING_LEVEL = 8
@@ -95,14 +101,16 @@ async function withRetry(fn) {
 }
 
 async function askChat(question) {
-  const res = await fetch(`${BASE}/api/ai/educational`, {
+  const res = await fetch(`${BASE}${CHAT_ROUTE}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question, conversationHistory: [], readingLevel: READING_LEVEL }),
+    signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || `chat returned ${res.status}`)
-  return { answer: data.answer || '', citations: data.citations || [] }
+  // `images` is returned by the multimodal-retrieval branch (pictures shown inside the answer).
+  return { answer: data.answer || '', citations: data.citations || [], images: data.images || [] }
 }
 
 async function judge(q, answer, citations) {
@@ -138,6 +146,7 @@ Grade only against the expectations above. Return JSON:
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: 'application/json', temperature: 0 },
       }),
+      signal: AbortSignal.timeout(JUDGE_TIMEOUT_MS),
     }
   )
   if (!res.ok) throw new Error(`judge ${res.status}: ${(await res.text()).slice(0, 200)}`)
@@ -147,7 +156,7 @@ Grade only against the expectations above. Return JSON:
 }
 
 async function evaluate(q) {
-  const { answer, citations } = await withRetry(() => askChat(q.question))
+  const { answer, citations, images } = await withRetry(() => askChat(q.question))
   const expected = expectedSources(q.expected_sources)
   const titles = citations.map((c) => String(c.sourceTitle).toLowerCase())
   const cited = citations.length > 0
@@ -162,6 +171,7 @@ async function evaluate(q) {
   return {
     id: q.id, category: q.category, question: q.question, answer,
     cited: citations.map((c) => c.sourceTitle), expected,
+    images: images.map((img) => img.sourceTitle || img.sourceFilePath),
     sourceCheck: expected.length ? cited && rightSource : null,
     judge: verdict, pass: problems.length === 0, problems,
   }
@@ -174,7 +184,7 @@ function report(results, meta) {
   const lines = [
     `# Chat evaluation report`,
     '',
-    `Run ${meta.started} against ${meta.base}. Judge model: ${meta.judge}.`,
+    `Run ${meta.started} against ${meta.base}${meta.route}${meta.label ? ` (${meta.label})` : ''}. Judge model: ${meta.judge}.`,
     '',
     `**Overall: ${passed} of ${done.length} passed (${pct(passed, done.length)})**` +
       (results.length > done.length ? `, ${results.length - done.length} could not run (see Errors).` : ''),
@@ -226,7 +236,10 @@ const loadQuestions = () => parseCsv(fs.readFileSync(path.join(__dirname, 'quest
 async function main() {
   if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is missing from asset-admin/.env')
   const questions = selectQuestions(loadQuestions(), ONLY)
-  const meta = { started: new Date().toISOString().slice(0, 16).replace('T', ' '), base: BASE, judge: JUDGE_MODEL }
+  const meta = {
+    started: new Date().toISOString().slice(0, 16).replace('T', ' '),
+    base: BASE, route: CHAT_ROUTE, label: LABEL, judge: JUDGE_MODEL,
+  }
   console.log(`Running ${questions.length} question(s) against ${BASE}`)
 
   const results = []
@@ -245,7 +258,8 @@ async function main() {
     }
   }
 
-  const dir = path.join(__dirname, 'results', meta.started.replace(/[: ]/g, '-'))
+  const slug = LABEL.replace(/[^\w.-]+/g, '-')
+  const dir = path.join(__dirname, 'results', meta.started.replace(/[: ]/g, '-') + (slug ? `-${slug}` : ''))
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'results.json'), JSON.stringify({ meta, results }, null, 2))
   fs.writeFileSync(path.join(dir, 'report.md'), report(results, meta))

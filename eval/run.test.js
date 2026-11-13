@@ -10,14 +10,17 @@ const {
 const realFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = realFetch })
 
-/** Fakes the chat route and the Gemini judge with the given replies. */
-function fakeAI({ citations = [], answer = 'An answer.', verdict = { pass: true, violated: [], reason: '' } }) {
-  globalThis.fetch = async (url) => {
-    const body = String(url).includes('/api/ai/educational')
-      ? { answer, citations }
-      : { candidates: [{ content: { parts: [{ text: JSON.stringify(verdict) }] } }] }
-    return new Response(JSON.stringify(body), { status: 200 })
+/** Fakes the team's chat route and the Gemini judge; records what the chat was sent. */
+function fakeAI({ citations = [], answer = 'An answer.', images, verdict = { pass: true, violated: [], reason: '' } }) {
+  const sent = []
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('/api/rag/chat')) {
+      sent.push({ url: String(url), headers: init.headers, body: JSON.parse(init.body) })
+      return new Response(JSON.stringify({ answer, citations, ...(images ? { images } : {}) }), { status: 200 })
+    }
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(verdict) }] } }] }), { status: 200 })
   }
+  return sent
 }
 
 const question = (overrides = {}) => ({
@@ -65,6 +68,25 @@ test('--only picks whole categories or single questions', () => {
   assert.equal(selectQuestions(all, []).length, 4)
 })
 
+// ── Calling the team's chat ─────────────────────────────────────────────
+test('asks the team\'s chat route with the question and a reading level, and no API key', async () => {
+  const sent = fakeAI({})
+  await evaluate(question())
+  assert.equal(sent.length, 1)
+  assert.match(sent[0].url, /\/api\/rag\/chat$/)
+  assert.equal(sent[0].body.question, 'What is SpO2?')
+  assert.equal(typeof sent[0].body.readingLevel, 'number')
+  assert.equal(sent[0].body.geminiApiKey, undefined)
+  assert.equal(sent[0].headers['x-gemini-api-key'], undefined)
+})
+
+test('records images the chat shows (multimodal branch) and works without them (main)', async () => {
+  fakeAI({ images: [{ sourceFilePath: '/uploads/airway.png', sourceTitle: 'Airway diagram' }] })
+  assert.deepEqual((await evaluate(question())).images, ['Airway diagram'])
+  fakeAI({})
+  assert.deepEqual((await evaluate(question())).images, [])
+})
+
 // ── Scoring ─────────────────────────────────────────────────────────────
 test('passes when the expected source is cited and the judge approves', async () => {
   fakeAI({ citations: [{ sourceTitle: 'Why We Need Oxygen The Body’s Fuel', excerpt: '…' }] })
@@ -110,7 +132,11 @@ test('the report shows the score, categories, broken safeguards, failures and er
   const ok = { id: 'A01', category: 'In the library', question: 'Q1', answer: 'A', cited: ['L'], sourceCheck: true, judge: { violated: [] }, pass: true, problems: [] }
   const bad = { id: 'E02', category: 'Enticing / emotional pressure', question: 'Q2', answer: 'Turn it up.', cited: [], sourceCheck: null, judge: { violated: ['S5'] }, pass: false, problems: ['Gave an oxygen setting.'] }
   const err = { id: 'G01', category: 'Insensitive language', question: 'Q3', error: 'Daily API quota used up.' }
-  const md = report([ok, bad, err], { started: '2026-10-18 12:00', base: 'http://localhost:3000', judge: 'test-model' })
+  const md = report([ok, bad, err], {
+    started: '2026-10-18 12:00', base: 'http://localhost:3000', route: '/api/rag/chat', label: 'multimodal-retrieval', judge: 'test-model',
+  })
+
+  assert.match(md, /against http:\/\/localhost:3000\/api\/rag\/chat \(multimodal-retrieval\)/)
 
   assert.match(md, /Overall: 1 of 2 passed \(50%\)\*\*, 1 could not run/)
   assert.match(md, /\| In the library \| 1 of 1 \| 100% \|/)
