@@ -4,7 +4,7 @@ const { test, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
 const {
   parseCsv, expectedSources, selectQuestions, loadQuestions,
-  withRetry, evaluate, report, SOURCE_TITLES, SAFEGUARDS,
+  withRetry, evaluate, evaluateLiteracy, report, literacyReport, LITERACY, SOURCE_TITLES, SAFEGUARDS,
 } = require('./run')
 
 const realFetch = globalThis.fetch
@@ -15,8 +15,10 @@ function fakeAI({ citations = [], answer = 'An answer.', images, verdict = { pas
   const sent = []
   globalThis.fetch = async (url, init) => {
     if (String(url).includes('/api/rag/chat')) {
-      sent.push({ url: String(url), headers: init.headers, body: JSON.parse(init.body) })
-      return new Response(JSON.stringify({ answer, citations, ...(images ? { images } : {}) }), { status: 200 })
+      const body = JSON.parse(init.body)
+      sent.push({ url: String(url), headers: init.headers, body })
+      const reply = typeof answer === 'function' ? answer(body) : answer // can depend on readingLevel
+      return new Response(JSON.stringify({ answer: reply, citations, ...(images ? { images } : {}) }), { status: 200 })
     }
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(verdict) }] } }] }), { status: 200 })
   }
@@ -125,6 +127,57 @@ test('a used-up daily quota stops immediately instead of retrying for hours', as
     (err) => err.fatal === true && /Daily API quota/.test(err.message)
   )
   assert.ok(Date.now() - started < 1000)
+})
+
+// ── Literacy check ──────────────────────────────────────────────────────
+const SIMPLE = 'Oxygen is the fuel your body uses. Your blood carries it. A clip on the finger checks it.'
+const COMPLEX = 'Hemoglobin, an iron-containing metalloprotein within erythrocytes, facilitates reversible oxygen binding, enabling systemic delivery to metabolically active tissues.'
+const lessonCitation = [{ sourceTitle: 'Why We Need Oxygen The Body’s Fuel', excerpt: '…' }]
+
+test('asks the question once at each literacy level', async () => {
+  const sent = fakeAI({ answer: SIMPLE, citations: lessonCitation })
+  await evaluateLiteracy(question(), 0)
+  assert.deepEqual(sent.map((s) => s.body.readingLevel), LITERACY.levels)
+})
+
+test('passes when the higher-level answer reads harder', async () => {
+  fakeAI({ answer: (body) => (body.readingLevel >= 14 ? COMPLEX : SIMPLE), citations: lessonCitation })
+  const r = await evaluateLiteracy(question(), 0)
+  assert.equal(r.pass, true)
+  assert.ok(r.gap >= LITERACY.minGap)
+  assert.ok(r.answers[0].grade < r.answers[1].grade)
+})
+
+test('fails when both levels get the same answer', async () => {
+  fakeAI({ answer: SIMPLE, citations: lessonCitation })
+  const r = await evaluateLiteracy(question(), 0)
+  assert.equal(r.pass, false)
+  assert.equal(r.gap, 0)
+  assert.match(r.problems[0], /didn't adapt/)
+})
+
+test('fails when an answer drops the expected source, even if it adapted', async () => {
+  fakeAI({ answer: (body) => (body.readingLevel >= 14 ? COMPLEX : SIMPLE), citations: [] })
+  const r = await evaluateLiteracy(question(), 0)
+  assert.equal(r.pass, false)
+  assert.ok(r.problems.some((p) => /No source cited/.test(p)))
+})
+
+test('the literacy report shows averages and a row per question', () => {
+  const mk = (id, low, high) => ({
+    id, question: `Q ${id}`, gap: high - low, pass: high - low >= LITERACY.minGap, problems: high - low >= LITERACY.minGap ? [] : ["Answers didn't adapt"],
+    answers: [{ level: 6, grade: low }, { level: 14, grade: high }],
+  })
+  const md = literacyReport(
+    [mk('A01', 8, 13), mk('A02', 10, 10), { id: 'A03', question: 'Q3', error: 'Daily API quota used up.' }],
+    { started: '2026-11-12 20:00', base: 'http://localhost:3001', route: '/api/rag/chat', label: 'multimodal-retrieval' }
+  )
+  assert.match(md, /Adapted to reading level: 1 of 2 questions\*\*/)
+  assert.match(md, /Average reading grade at level 6: \*\*9\.0\*\*/)
+  assert.match(md, /Average gap: \*\*2\.5 grades\*\*/)
+  assert.match(md, /\| A01: Q A01 \| 8 \| 13 \| 5 \| Adapted \|/)
+  assert.match(md, /\| A02: Q A02 \| 10 \| 10 \| 0 \| Did not adapt \|/)
+  assert.match(md, /- A03: Daily API quota used up\./)
 })
 
 // ── Report ──────────────────────────────────────────────────────────────

@@ -11,12 +11,14 @@
  *   node eval/run.js --only A,C05                     # a category or specific ids
  *   node eval/run.js --label multimodal-retrieval     # name the run (e.g. the branch tested)
  *   node eval/run.js --base https://...               # a deployed site instead
+ *   node eval/run.js --literacy                       # literacy check (see LITERACY below)
  *
  * Needs the asset-admin server running (cd asset-admin && npm start) and
  * GEMINI_API_KEY in asset-admin/.env (used for the judge).
  */
 const fs = require('fs')
 const path = require('path')
+const { answerGrade } = require('./readability')
 
 const envFile = path.join(__dirname, '..', 'asset-admin', '.env')
 if (fs.existsSync(envFile)) process.loadEnvFile(envFile)
@@ -34,6 +36,14 @@ const JUDGE_TIMEOUT_MS = 90000
 const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL || 'gemini-3.8-flash'
 const DELAY_MS = Number(process.env.EVAL_DELAY_MS || 6000) // stay under free-tier rate limits
 const READING_LEVEL = 8
+const LITERACY_MODE = process.argv.includes('--literacy')
+
+// Literacy check: each "In the library" question is asked at a low and a high reading level
+// (the app's two demo profiles) and both answers get a SMOG reading grade. A question passes
+// when the high-level answer reads at least `minGap` grades harder, i.e. the chat adapted.
+// `lowTarget` is reported, not enforced: SMOG scores short texts high (even Lesson 1.1's own
+// simple sentences score about grade 10). Both numbers are team decisions.
+const LITERACY = { levels: [6, 14], minGap: 2, lowTarget: 8 }
 
 // Library source codes used in questions.csv → text that appears in the cited source title.
 const SOURCE_TITLES = {
@@ -100,11 +110,11 @@ async function withRetry(fn) {
   }
 }
 
-async function askChat(question) {
+async function askChat(question, readingLevel = READING_LEVEL) {
   const res = await fetch(`${BASE}${CHAT_ROUTE}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, conversationHistory: [], readingLevel: READING_LEVEL }),
+    body: JSON.stringify({ question, conversationHistory: [], readingLevel }),
     signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
   })
   const data = await res.json().catch(() => ({}))
@@ -155,26 +165,55 @@ Grade only against the expectations above. Return JSON:
   return { pass: !!verdict.pass, violated: verdict.violated || [], reason: verdict.reason || '' }
 }
 
-async function evaluate(q) {
-  const { answer, citations, images } = await withRetry(() => askChat(q.question))
+/** Did the answer cite a library source, and the one the question expects? */
+function checkSources(q, citations) {
   const expected = expectedSources(q.expected_sources)
   const titles = citations.map((c) => String(c.sourceTitle).toLowerCase())
   const cited = citations.length > 0
   const rightSource = expected.some((code) => titles.some((t) => t.includes(SOURCE_TITLES[code])))
+  let problem = null
+  if (expected.length && !cited) problem = 'No source cited'
+  else if (expected.length && !rightSource) problem = `Expected ${expected.join(' or ')}`
+  return { expected, ok: expected.length ? cited && rightSource : null, problem }
+}
+
+async function evaluate(q) {
+  const { answer, citations, images } = await withRetry(() => askChat(q.question))
+  const sources = checkSources(q, citations)
   const verdict = await withRetry(() => judge(q, answer, citations))
 
   const problems = []
-  if (expected.length && !cited) problems.push('No source cited')
-  else if (expected.length && !rightSource) problems.push(`Expected ${expected.join(' or ')}`)
+  if (sources.problem) problems.push(sources.problem)
   if (!verdict.pass) problems.push(verdict.reason)
 
   return {
     id: q.id, category: q.category, question: q.question, answer,
-    cited: citations.map((c) => c.sourceTitle), expected,
+    cited: citations.map((c) => c.sourceTitle), expected: sources.expected,
     images: images.map((img) => img.sourceTitle || img.sourceFilePath),
-    sourceCheck: expected.length ? cited && rightSource : null,
+    sourceCheck: sources.ok,
     judge: verdict, pass: problems.length === 0, problems,
   }
+}
+
+/** Asks one question at each LITERACY level and checks the answers' reading grades differ. */
+async function evaluateLiteracy(q, pauseMs = DELAY_MS) {
+  const answers = []
+  for (const [i, level] of LITERACY.levels.entries()) {
+    if (i) await sleep(pauseMs)
+    const { answer, citations } = await withRetry(() => askChat(q.question, level))
+    const sources = checkSources(q, citations)
+    answers.push({ level, grade: answerGrade(answer), sourceOk: sources.ok, sourceProblem: sources.problem, answer })
+  }
+  const [low, high] = answers
+  const gap = high.grade - low.grade
+
+  const problems = []
+  if (gap < LITERACY.minGap) {
+    problems.push(`Answers didn't adapt: grade ${low.grade} at level ${low.level} vs grade ${high.grade} at level ${high.level}`)
+  }
+  for (const a of answers) if (a.sourceProblem) problems.push(`Level ${a.level}: ${a.sourceProblem}`)
+
+  return { id: q.id, question: q.question, answers, gap, pass: problems.length === 0, problems }
 }
 
 function report(results, meta) {
@@ -227,6 +266,47 @@ function report(results, meta) {
   return lines.join('\n') + '\n'
 }
 
+function literacyReport(results, meta) {
+  const done = results.filter((r) => !r.error)
+  const passed = done.filter((r) => r.pass).length
+  const avg = (xs) => (xs.length ? (xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(1) : '–')
+  const [lowLevel, highLevel] = LITERACY.levels
+  const lowGrades = done.map((r) => r.answers[0].grade)
+  const lines = [
+    '# Chat literacy report',
+    '',
+    `Run ${meta.started} against ${meta.base}${meta.route}${meta.label ? ` (${meta.label})` : ''}.`,
+    `Each question was asked at reading level ${lowLevel} and ${highLevel}; answers were scored with the app's SMOG formula.`,
+    '',
+    `**Adapted to reading level: ${passed} of ${done.length} questions**` +
+      ` (the level-${highLevel} answer read at least ${LITERACY.minGap} grades harder)` +
+      (results.length > done.length ? `, ${results.length - done.length} could not run (see Errors).` : ''),
+    '',
+    `- Average reading grade at level ${lowLevel}: **${avg(lowGrades)}**`,
+    `- Average reading grade at level ${highLevel}: **${avg(done.map((r) => r.answers[1].grade))}**`,
+    `- Average gap: **${avg(done.map((r) => r.gap))} grades**`,
+    `- Level-${lowLevel} answers at grade ${LITERACY.lowTarget} or below: ${lowGrades.filter((g) => g <= LITERACY.lowTarget).length} of ${done.length}`,
+    '',
+    `| Question | Grade at level ${lowLevel} | Grade at level ${highLevel} | Gap | Result |`,
+    '|---|---|---|---|---|',
+  ]
+  for (const r of done) {
+    lines.push(`| ${r.id}: ${r.question} | ${r.answers[0].grade} | ${r.answers[1].grade} | ${r.gap} | ${r.pass ? 'Adapted' : 'Did not adapt'} |`)
+  }
+  const failed = done.filter((r) => !r.pass)
+  if (failed.length) {
+    lines.push('', `## Problems (${failed.length})`, '')
+    for (const r of failed) lines.push(`- **${r.id}:** ${r.problems.join(' ')}`)
+  }
+  const errors = results.filter((r) => r.error)
+  if (errors.length) {
+    lines.push('', `## Errors (${errors.length})`, '')
+    for (const r of errors) lines.push(`- ${r.id}: ${r.error}`)
+  }
+  lines.push('', '_SMOG is approximate, especially for short answers; the gap between levels is the main signal._')
+  return lines.join('\n') + '\n'
+}
+
 /** `--only A,C05` → every question in category A plus question C05. Empty → all. */
 const selectQuestions = (all, only) =>
   only.length ? all.filter((q) => only.some((o) => q.id === o || (/^[A-G]$/.test(o) && q.id.startsWith(o)))) : all
@@ -234,21 +314,28 @@ const selectQuestions = (all, only) =>
 const loadQuestions = () => parseCsv(fs.readFileSync(path.join(__dirname, 'questions.csv'), 'utf8'))
 
 async function main() {
-  if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is missing from asset-admin/.env')
-  const questions = selectQuestions(loadQuestions(), ONLY)
+  // The judge calls Gemini from this script; the literacy check only talks to the chat server.
+  if (!LITERACY_MODE && !process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is missing from asset-admin/.env')
+  const all = loadQuestions()
+  const questions = LITERACY_MODE
+    ? selectQuestions(all.filter((q) => q.id.startsWith('A')), ONLY) // only "In the library" questions
+    : selectQuestions(all, ONLY)
+  if (!questions.length) throw new Error('No questions selected (the literacy check uses category A only)')
   const meta = {
     started: new Date().toISOString().slice(0, 16).replace('T', ' '),
-    base: BASE, route: CHAT_ROUTE, label: LABEL, judge: JUDGE_MODEL,
+    base: BASE, route: CHAT_ROUTE, label: LABEL, judge: LITERACY_MODE ? null : JUDGE_MODEL,
+    mode: LITERACY_MODE ? 'literacy' : 'safety',
   }
-  console.log(`Running ${questions.length} question(s) against ${BASE}`)
+  console.log(`Running ${questions.length} question(s) against ${BASE}${LITERACY_MODE ? ' (literacy check)' : ''}`)
 
   const results = []
   for (const [i, q] of questions.entries()) {
     if (i) await sleep(DELAY_MS)
     try {
-      const r = await evaluate(q)
+      const r = LITERACY_MODE ? await evaluateLiteracy(q) : await evaluate(q)
       results.push(r)
-      console.log(`${r.pass ? '✓' : '✗'} ${q.id} ${r.pass ? '' : '– ' + r.problems.join(' ')}`)
+      const grades = LITERACY_MODE ? ` (grade ${r.answers.map((a) => a.grade).join(' → ')})` : ''
+      console.log(`${r.pass ? '✓' : '✗'} ${q.id}${grades} ${r.pass ? '' : '– ' + r.problems.join(' ')}`)
     } catch (err) {
       // Keep just Google's one-line message instead of the whole JSON error body.
       const error = (err.message.match(/"message": "([^"]+)"/) || [])[1] || err.message
@@ -258,15 +345,18 @@ async function main() {
     }
   }
 
-  const slug = LABEL.replace(/[^\w.-]+/g, '-')
+  const slug = [LITERACY_MODE ? 'literacy' : '', LABEL.replace(/[^\w.-]+/g, '-')].filter(Boolean).join('-')
   const dir = path.join(__dirname, 'results', meta.started.replace(/[: ]/g, '-') + (slug ? `-${slug}` : ''))
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'results.json'), JSON.stringify({ meta, results }, null, 2))
-  fs.writeFileSync(path.join(dir, 'report.md'), report(results, meta))
+  fs.writeFileSync(path.join(dir, 'report.md'), LITERACY_MODE ? literacyReport(results, meta) : report(results, meta))
   console.log(`\nReport: ${path.relative(process.cwd(), path.join(dir, 'report.md'))}`)
 }
 
-module.exports = { parseCsv, expectedSources, selectQuestions, loadQuestions, withRetry, evaluate, report, SOURCE_TITLES, SAFEGUARDS }
+module.exports = {
+  parseCsv, expectedSources, selectQuestions, loadQuestions, withRetry,
+  evaluate, evaluateLiteracy, report, literacyReport, LITERACY, SOURCE_TITLES, SAFEGUARDS,
+}
 
 if (require.main === module) {
   main().catch((err) => {

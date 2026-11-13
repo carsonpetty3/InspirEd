@@ -14,6 +14,7 @@ the app's Ask AI uses. Point it at `main` or at any teammate's branch to compare
   Opens in Excel or Google Sheets. **Draft: waiting on mentor review.**
 - `run.js`: asks the chat every question, scores the answers and writes a report. Also records
   any images the chat shows (the `images` list from the multimodal-retrieval branch).
+- `readability.js`: reading grade of an answer, using the app's SMOG formula.
 - `results/`: one folder per run with `report.md` (readable summary) and `results.json`
   (everything). Not committed to git.
 
@@ -47,6 +48,23 @@ API key for full runs; the free tier runs out quickly.
 Optional settings: `EVAL_JUDGE_MODEL` (default `gemini-3.8-flash`) and `EVAL_DELAY_MS`
 (pause between questions, default 6000). Each AI request times out after 1–2 minutes, so a
 stuck request is reported as an error instead of hanging the run.
+
+### Literacy check
+
+```bash
+node eval/run.js --literacy                 # the 20 "In the library" questions
+node eval/run.js --literacy --only A01,A06  # a few of them
+```
+
+Asks each library question twice, at reading level 6 and 14 (the app's two demo profiles), and
+scores both answers with the same SMOG formula the app uses in onboarding (`readability.js`,
+checked against `utils/textAnalysis.ts`). A question **adapted** when the level-14 answer reads
+at least 2 grades harder than the level-6 one, and both still cite the expected source. The
+report also shows average grades at each level and how many level-6 answers were at grade 8 or
+below. SMOG scores short texts high (Lesson 1.1's own simple sentences score about grade 10), so
+the gap is the main signal. Both thresholds are in `LITERACY` at the top of `run.js`.
+
+This mode doesn't use the AI judge: it costs 2 chat requests per question.
 
 ### Testing a teammate's branch
 
