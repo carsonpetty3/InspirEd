@@ -307,6 +307,7 @@ The client and EFA hold a grant to run a co-design study with physicians and fam
 | `FAQ.md` | Common questions about setup and behavior |
 | `docs/chatbot-environment.md` | Environment variables and secrets checklist |
 | `docs/rag-mongodb-setup.md` | MongoDB knowledge base setup |
+| `docs/deployment.md` | Web hosting on Vercel (demo site) |
 
 ---
 
